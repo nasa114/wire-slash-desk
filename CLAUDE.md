@@ -45,3 +45,10 @@
 ## 開発フロー
 - `/goal` で受け入れ条件の自動評価を活用
 - サブエージェント（`security-reviewer` / `test-writer`）を事前活用
+
+## 実行環境の既知の癖(全エージェント向け・2026-07-16 実証)
+- **docker / psql は無い**: DB直接操作は `node -e` + pg クライアント。Dockerfile/compose はこのコンテナではビルド検証不可(構文検証まで)
+- **画面確認**: Playwright MCP は不可(chrome channel 未導入)。スクリーンショットは `~/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell --headless --disable-gpu --no-sandbox --screenshot=<out.png> <URL>`。認証必須ページは curl(Cookie jar)で保存した HTML を `file://` で開く
+- **アプリ起動**: `NODE_USE_ENV_PROXY=1 node --env-file=.env src/main.ts`(NODE_USE_ENV_PROXY はシェルから渡す)。ポート3000に前セッションのプロセスが残っていることがあるため、検証前に「どのコードが動いているか」を確認する
+- **外部API**: squid 許可リスト外は 403(例: api.osv.dev → 脆弱性照会は `pnpm audit` で代替)
+- **Codex CLI**: 内蔵サンドボックス(bwrap)はコンテナ内で動かない。環境全体が Dev Container で隔離されているため **`--sandbox danger-full-access` での実行をオーナーが承認済み(2026-07-16)**: `codex exec --skip-git-repo-check --sandbox danger-full-access -C <dir> "<プロンプト>" < /dev/null`(stdin を閉じないとハングする)。テキストだけ欲しい場合は `--sandbox read-only` + 回答本文出力でも可(その場合、出力にプロンプトのエコーが混ざるため成果物は最後の出現位置から抽出する)
