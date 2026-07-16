@@ -43,6 +43,10 @@ async function loadRunCollect(
 }
 
 async function main(): Promise<void> {
+  // loadConfig() は TRUST_EGRESS_PROXY=true 時のプロキシ関連env(HTTPS_PROXY /
+  // HTTP_PROXY / NODE_USE_ENV_PROXY=1)の検証も行い、欠落があれば ConfigError を
+  // 投げる(src/config.ts の validateEgressProxyTrust 参照)。ここで throw された
+  // 例外は下部の main().catch(...) が拾って起動を拒否する(fail fast)。
   const config = loadConfig();
 
   // トークン未設定なら起動拒否(セキュリティ最優先)。

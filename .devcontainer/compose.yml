@@ -14,6 +14,8 @@ services:
         condition: service_healthy
     environment:
       - NODE_ENV=${NODE_ENV:-development}
+      # Claude Code の設定・認証ファイル(~/.claude.json 等)を named volume 側に集約する
+      - CLAUDE_CONFIG_DIR=/home/node/.claude
       # PostgreSQL 接続情報（同一ネットワーク内のホスト名 db で接続）
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
@@ -34,6 +36,7 @@ services:
       # エージェントのホームディレクトリを named volume で永続化（コンテナ再作成後も保持）
       - cc-userdata:/home/node/.claude
       - codex-userdata:/home/node/.codex
+      - commandhistory:/commandhistory
 
     # Uncomment the next four lines if you will use a ptrace-based debugger like C++, Go, and Rust.
     # cap_add:
@@ -97,4 +100,5 @@ volumes:
   squid-logs:
   cc-userdata:
   codex-userdata:
+  commandhistory:
   pg-data:

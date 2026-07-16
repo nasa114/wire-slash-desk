@@ -26,18 +26,66 @@ function readString(env: NodeJS.ProcessEnv, key: string): string | undefined {
   return trimmed.length === 0 ? undefined : trimmed;
 }
 
+/** 設定不備エラー(起動時 fail fast 用)。メッセージに秘密の値は含めない。 */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigError';
+  }
+}
+
+/**
+ * TRUST_EGRESS_PROXY=true が SSRF ガードの DNS 事前解決をスキップする前提として、
+ * 実トラフィックが本当にプロキシを通る環境変数一式が揃っているかを検証する。
+ *
+ * `TRUST_EGRESS_PROXY=true` を SSRF 防御の空洞化なしに使うには、
+ * - HTTPS_PROXY / HTTP_PROXY(大文字小文字どちらか)が設定されていること
+ * - Node の fetch(undici)にプロキシ環境変数を読ませる NODE_USE_ENV_PROXY=1 が
+ *   設定されていること(これが無いと HTTPS_PROXY 等が事実上無視され、
+ *   直接エグレスしてしまう)
+ * の両方が必要。欠けていれば ConfigError を投げて起動を拒否する。
+ * エラーメッセージには欠落している変数名のみを含め、値そのものは含めない。
+ */
+export function validateEgressProxyTrust(
+  env: NodeJS.ProcessEnv,
+  trustEgressProxy: boolean,
+): void {
+  if (!trustEgressProxy) return;
+
+  const missing: string[] = [];
+  const hasHttpsProxy =
+    readString(env, 'HTTPS_PROXY') !== undefined || readString(env, 'https_proxy') !== undefined;
+  const hasHttpProxy =
+    readString(env, 'HTTP_PROXY') !== undefined || readString(env, 'http_proxy') !== undefined;
+  const hasNodeUseEnvProxy = readString(env, 'NODE_USE_ENV_PROXY') === '1';
+
+  if (!hasHttpsProxy) missing.push('HTTPS_PROXY (or https_proxy)');
+  if (!hasHttpProxy) missing.push('HTTP_PROXY (or http_proxy)');
+  if (!hasNodeUseEnvProxy) missing.push('NODE_USE_ENV_PROXY=1');
+
+  if (missing.length > 0) {
+    throw new ConfigError(
+      `TRUST_EGRESS_PROXY=true requires the following environment variable(s) to be set ` +
+        `(otherwise traffic may bypass the egress proxy and the SSRF guard becomes a no-op): ` +
+        `${missing.join(', ')}`,
+    );
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const portRaw = readString(env, 'PORT');
   const port = portRaw !== undefined ? Number.parseInt(portRaw, 10) : 3000;
+  // 'true' のみを有効とみなす。それ以外(未設定・'false'・'1' など)は false。
+  const trustEgressProxy = readString(env, 'TRUST_EGRESS_PROXY') === 'true';
+  validateEgressProxyTrust(env, trustEgressProxy);
   return {
     port: Number.isFinite(port) && port > 0 ? port : 3000,
     databaseUrl: readString(env, 'DATABASE_URL'),
     mcpBearerToken: readString(env, 'MCP_BEARER_TOKEN'),
     collectorToken: readString(env, 'COLLECTOR_TOKEN'),
-    // 'true' のみを有効とみなす。それ以外(未設定・'false'・'1' など)は false。
     cacheFulltext: readString(env, 'CACHE_FULLTEXT') === 'true',
     collectorContact: readString(env, 'COLLECTOR_CONTACT'),
-    trustEgressProxy: readString(env, 'TRUST_EGRESS_PROXY') === 'true',
+    trustEgressProxy,
     uiPassword: readString(env, 'UI_PASSWORD'),
     nodeEnv: readString(env, 'NODE_ENV') ?? 'development',
   };

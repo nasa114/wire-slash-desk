@@ -207,7 +207,8 @@ claude mcp add --transport http rss \
 - `search_articles` — 記事検索
 - `get_daily_titles` — 日付別タイトル一覧
 - `fetch_article_content` — 本文取得（`fulltext_allowed=true` 時のみ）
-- `save_digest` — ダイジェスト保存
+
+> `save_digest`（ダイジェスト保存）は未実装です。保存先（DB かクライアント側か）を決める未決事項 U6（`docs/002_Spec.md` §13）が確定次第、将来機能として追加予定です。
 
 ### Claude.ai / ChatGPT（カスタムコネクタ）での接続
 
@@ -223,12 +224,16 @@ claude mcp add --transport http rss \
 
 ### 仕組み
 
-Dev Container 起動時に以下の named volumes を自動マウント:
+Dev Container 起動時に以下の named volumes を自動マウント（`.devcontainer/compose.yml` の `app` サービス）:
 - `cc-userdata` → `/home/node/.claude` — Claude Code 認証・設定
 - `codex-userdata` → `/home/node/.codex` — Codex 認証・設定
-- `claude-code-bashhistory-*` → `/commandhistory` — コマンド履歴
+- `commandhistory` → `/commandhistory` — コマンド履歴
 
-コンテナ再構築後も認証情報が保持され、再ログイン不要です。
+あわせて `CLAUDE_CONFIG_DIR=/home/node/.claude` を設定し、Claude Code の設定ファイル一式を named volume 側に集約しています。
+
+コンテナ再構築後も認証情報・コマンド履歴が保持され、再ログイン不要です。
+
+> **注意**: これらは Dev Container の設定変更のため、**コンテナ再構築後（`devcontainer rebuild .`）に有効**になります。既存コンテナを起動したままでは反映されません。
 
 ### 確認方法
 
@@ -268,7 +273,7 @@ sudo chown -R node:node ~/.claude ~/.codex /commandhistory
 
 実行結果:
 - `backups/agent-home-YYYYMMDD-HHMMSS-utc.tar.gz` 作成
-- 直近7日間のバックアップのみ保持（古いものは自動削除）
+- 新しい順に7世代（件数ベース）のみ保持（それより古いものは自動削除）
 
 ### リストア
 
@@ -323,6 +328,7 @@ docs/
   001_Brief.md         # 企画書
   002_Spec.md          # 設計書（最重要。矛盾があれば相談）
   003_AgentTasks.md    # 実装タスク定義
+  004_KnownLimitations.md # 既知の限界（公開デプロイ前に確認）
   inventory.md         # T0-0 現状把握レポート
 
 .devcontainer/         # Dev Container 設定
@@ -451,6 +457,7 @@ claude mcp ls  # 接続状態確認
 - **設計書**: `docs/002_Spec.md`（最重要）
 - **タスク定義**: `docs/003_AgentTasks.md`
 - **現状把握**: `docs/inventory.md`
+- **既知の限界**: `docs/004_KnownLimitations.md`（公開デプロイ前に確認）
 - **規約**: `CLAUDE.md` （Claude Code用）/ `AGENTS.md` （Codex用）
 
 ---
