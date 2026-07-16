@@ -1,0 +1,21 @@
+# ビルドコンテキストに必要なのは package.json / pnpm-lock.yaml /
+# pnpm-workspace.yaml / .npmrc / src / migrations のみ。それ以外は除外する。
+.git
+.github
+.devcontainer
+.claude
+.codex
+.vscode
+node_modules
+.pnpm-store
+backups
+docs
+scripts
+test
+*.md
+.env
+.env.*
+!.env.example
+Dockerfile
+compose.yaml
+.dockerignore

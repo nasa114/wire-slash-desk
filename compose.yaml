@@ -1,0 +1,108 @@
+# デプロイ用 compose(開発環境は .devcontainer/compose.yml — こちらとは独立)。
+#
+# 使い方:
+#   1. リポジトリ直下に .env を作成(必須: POSTGRES_PASSWORD, MCP_BEARER_TOKEN, COLLECTOR_TOKEN)
+#   2. docker compose up -d --build
+#   3. 初回のみ、信頼できるネットワークから http://<host>:3000/ を開き /setup で管理ユーザーを作成
+#      (docs/004_KnownLimitations.md §6 — セットアップ完了前に公開網へ晒さないこと)
+#
+# TLS 終端はこの compose の外(リバースプロキシ / PaaS)の責務。そのため app の
+# ポートは既定でループバックのみに束縛する(docs/004_KnownLimitations.md §2)。
+# HTTPS なしの LAN 内検証では SESSION_COOKIE_SECURE=false を .env で明示する。
+#
+# 収集トリガー(設計書 §8: 外部から POST /internal/collect、冪等)を compose 内で
+# 完結させたい場合は cron プロファイルを有効化する:
+#   docker compose --profile cron up -d
+
+name: personal-rss-reader
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rss}
+      POSTGRES_USER: ${POSTGRES_USER:-rss}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD を .env に設定してください}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      # $$ でエスケープし、compose 側でなくコンテナ内シェルで環境変数を解決する
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # マイグレーションを1回だけ実行して終了する(app はこれの成功を待つ)
+  migrate:
+    build: .
+    restart: "no"
+    command: ["npm", "run", "migrate"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rss}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rss}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      # 既定はループバックのみ(TLS 終端プロキシ経由での公開を前提)。
+      # LAN へ直接開く場合は .env で APP_BIND=0.0.0.0 を明示する。
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rss}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rss}
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?MCP_BEARER_TOKEN を .env に設定してください (openssl rand -hex 32)}
+      COLLECTOR_TOKEN: ${COLLECTOR_TOKEN:?COLLECTOR_TOKEN を .env に設定してください (openssl rand -hex 32)}
+      CACHE_FULLTEXT: ${CACHE_FULLTEXT:-false}
+      COLLECTOR_CONTACT: ${COLLECTOR_CONTACT:-}
+      # NODE_ENV=production のため既定 true(HTTPS 前提)。HTTP 検証時のみ false を明示。
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - backend
+
+  # 任意: 収集の定期トリガー(--profile cron で有効化)。
+  # GitHub Actions schedule / cloud timer を使う場合はこのサービスは不要(設計書 §8 D7)。
+  collector-cron:
+    profiles: ["cron"]
+    image: curlimages/curl:8.14.1
+    restart: unless-stopped
+    environment:
+      COLLECTOR_TOKEN: ${COLLECTOR_TOKEN}
+      COLLECT_INTERVAL_SECONDS: ${COLLECT_INTERVAL_SECONDS:-900}
+    command:
+      - sh
+      - -c
+      - |
+        sleep 30
+        while true; do
+          curl -fsS -m 300 -X POST -H "X-Collector-Token: $${COLLECTOR_TOKEN}" \
+            http://app:3000/internal/collect > /dev/null \
+            || echo "collect failed: $$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          sleep "$${COLLECT_INTERVAL_SECONDS}"
+        done
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  pg-data:

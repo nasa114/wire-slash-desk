@@ -136,6 +136,26 @@ NODE_USE_ENV_PROXY=1 node --env-file=.env src/main.ts
 - 認証系統は MCP(`MCP_BEARER_TOKEN`)・収集(`COLLECTOR_TOKEN`)と完全に分離されており、セッション Cookie で API は呼べない
 - CSRF は Origin 検証(hono/csrf)+ SameSite=Lax の二重防御。フォームは POST → 303 の PRG、HTMX(`hx-boost`)は漸進的強化として動く
 
+### デプロイ(Docker / compose.yaml)
+
+デプロイ用の `Dockerfile` と `compose.yaml` がリポジトリ直下にある(開発用の `.devcontainer/compose.yml` とは独立)。イメージは Node 24 の native type stripping で TS を直接実行するためビルド工程はなく、本番依存のみを `--frozen-lockfile --ignore-scripts` で入れて非 root 実行する。
+
+```bash
+# 1. .env を用意(POSTGRES_PASSWORD / MCP_BEARER_TOKEN / COLLECTOR_TOKEN が必須)
+cp .env.example .env && vi .env
+
+# 2. 起動(db → migrate(1回実行) → app の順に立ち上がる)
+docker compose up -d --build
+
+# 3. 収集の定期トリガーも compose 内で完結させる場合(15分間隔、任意)
+docker compose --profile cron up -d
+```
+
+- `app` のポートは既定で `127.0.0.1:3000` のみに束縛。**TLS 終端(リバースプロキシ)配下での公開が前提**(`docs/004_KnownLimitations.md` §2)。LAN へ直接開くなら `.env` で `APP_BIND=0.0.0.0` を明示
+- `NODE_ENV=production` のためセッション Cookie は既定で `Secure`。HTTP のまま検証する場合のみ `SESSION_COOKIE_SECURE=false` を明示
+- **初回はセットアップ完了前に公開網へ晒さないこと**(`/setup` が開いている間は誰でも管理ユーザーを作れる — `docs/004_KnownLimitations.md` §6)
+- 収集トリガーを GitHub Actions schedule 等の外部に置く場合は `--profile cron` は不要(設計書 §8 D7)
+
 ---
 
 ## コマンド
