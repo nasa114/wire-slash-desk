@@ -65,6 +65,7 @@ async function main(): Promise<void> {
     collectorToken: config.collectorToken as string,
     cacheFulltext: config.cacheFulltext,
     trustEgressProxy: config.trustEgressProxy,
+    uiPassword: config.uiPassword,
     userAgent,
   });
 

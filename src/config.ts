@@ -14,6 +14,8 @@ export interface AppConfig {
    * 許可リストに委譲する。直接エグレス環境では必ず false のままにすること。
    */
   trustEgressProxy: boolean;
+  /** read-only UI(/ui)の Basic 認証パスワード。未設定なら UI は無効(404)。 */
+  uiPassword: string | undefined;
   nodeEnv: string;
 }
 
@@ -36,6 +38,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     cacheFulltext: readString(env, 'CACHE_FULLTEXT') === 'true',
     collectorContact: readString(env, 'COLLECTOR_CONTACT'),
     trustEgressProxy: readString(env, 'TRUST_EGRESS_PROXY') === 'true',
+    uiPassword: readString(env, 'UI_PASSWORD'),
     nodeEnv: readString(env, 'NODE_ENV') ?? 'development',
   };
 }
