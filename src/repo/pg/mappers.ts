@@ -1,4 +1,4 @@
-import type { Article, Feed } from '../../domain/types.ts';
+import type { Article, Feed, Session, User } from '../../domain/types.ts';
 
 /** feeds テーブルの行(snake_case)。pg ドライバは timestamptz/uuid/int/bool を適切な JS 型へ変換済み。 */
 export interface FeedRow {
@@ -61,5 +61,43 @@ export function mapArticleRow(row: ArticleRow): Article {
     lang: row.lang,
     content: row.content,
     fetchedAt: row.fetched_at,
+  };
+}
+
+/** users テーブルの行(snake_case)。 */
+export interface UserRow {
+  id: string;
+  username: string;
+  password_hash: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export function mapUserRow(row: UserRow): User {
+  return {
+    id: row.id,
+    username: row.username,
+    passwordHash: row.password_hash,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** sessions テーブルの行(snake_case)。 */
+export interface SessionRow {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: Date;
+  created_at: Date;
+}
+
+export function mapSessionRow(row: SessionRow): Session {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    tokenHash: row.token_hash,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
   };
 }

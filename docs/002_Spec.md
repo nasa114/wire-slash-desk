@@ -234,7 +234,7 @@ Claude Code公式リファレンス構成に倣い、named volumeで永続化す
 |---|---|---|
 | U1 | データ主権方針の適用範囲: 公開RSSのタイトル/URLを海外API（Claude/ChatGPT）へ渡すことを許容するか。ホスティングは国内限定か | MCP設計・デプロイ先・AI住み分け（§12） |
 | U2 | ベクトル検索の採否・埋め込みモデルと次元 | M5、`article_embeddings` の確定 |
-| U3 | 管理UIの技術選定（最小SSR / Hono+HTMX / Next等） | M4 |
+| U3 | ~~管理UIの技術選定~~ → **確定(2026-07-16)**: Hono + HTMX。認証は users テーブル(scrypt) + セッションCookie、UIは `/` 直下(T4-1 実装済み) | M4 |
 | U4 | TypeScript化の範囲、ORM導入の有無 | T1以降の書き方 |
 | U5 | OAuth 2.1の認可サーバーを自前実装するか外部IdPを使うか | M4 |
 | U6 | 翻訳結果・ダイジェストの保存方針（`digests` を使うか、クライアント側に置くか） | スキーマ運用 |

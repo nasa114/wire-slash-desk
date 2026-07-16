@@ -14,8 +14,11 @@ export interface AppConfig {
    * 許可リストに委譲する。直接エグレス環境では必ず false のままにすること。
    */
   trustEgressProxy: boolean;
-  /** read-only UI(/ui)の Basic 認証パスワード。未設定なら UI は無効(404)。 */
-  uiPassword: string | undefined;
+  /**
+   * セッション Cookie の Secure 属性。SESSION_COOKIE_SECURE=true/false で明示指定、
+   * 未設定なら NODE_ENV=production のとき true(HTTPS 前提)。
+   */
+  cookieSecure: boolean;
   nodeEnv: string;
 }
 
@@ -78,6 +81,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   // 'true' のみを有効とみなす。それ以外(未設定・'false'・'1' など)は false。
   const trustEgressProxy = readString(env, 'TRUST_EGRESS_PROXY') === 'true';
   validateEgressProxyTrust(env, trustEgressProxy);
+  const nodeEnv = readString(env, 'NODE_ENV') ?? 'development';
+  const cookieSecureRaw = readString(env, 'SESSION_COOKIE_SECURE');
+  const cookieSecure =
+    cookieSecureRaw !== undefined ? cookieSecureRaw === 'true' : nodeEnv === 'production';
   return {
     port: Number.isFinite(port) && port > 0 ? port : 3000,
     databaseUrl: readString(env, 'DATABASE_URL'),
@@ -86,8 +93,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     cacheFulltext: readString(env, 'CACHE_FULLTEXT') === 'true',
     collectorContact: readString(env, 'COLLECTOR_CONTACT'),
     trustEgressProxy,
-    uiPassword: readString(env, 'UI_PASSWORD'),
-    nodeEnv: readString(env, 'NODE_ENV') ?? 'development',
+    cookieSecure,
+    nodeEnv,
   };
 }
 

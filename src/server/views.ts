@@ -1,20 +1,11 @@
-import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { Repositories } from '../domain/repositories.ts';
 import type { Article, Feed } from '../domain/types.ts';
-import { verifyBasicPassword } from './auth.ts';
 
 /**
- * 緊急時・日常確認用の read-only ダッシュボード(ブラウザ向け)。
- * 海外の夜間に流れた情報を、日本時間の朝に一望する「ワイヤーデスク」。
- * 書き込み操作は持たない(管理 UI = T4-1 は未決事項 U3 の確定後)。
+ * Wire Desk のビュー層(HTML 文字列レンダリング)。
+ * ルーティング・認証は src/server/web.ts(Hono)が担い、ここは純粋な描画のみ。
  */
-export interface UiDeps {
-  repos: Repositories;
-  uiPassword: string;
-  now?: () => Date;
-}
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -28,7 +19,7 @@ function escapeHtml(value: string): string {
  * フィード由来の javascript:/data: やパース不能 URL は null を返し、
  * 呼び出し側でリンク化せずテキスト表示させる(クリック時のスクリプト実行を防ぐ)。
  */
-function safeHttpUrl(raw: string): string | null {
+export function safeHttpUrl(raw: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -42,7 +33,7 @@ function safeHttpUrl(raw: string): string | null {
  * YYYY-MM-DD が実在日かを UTC ラウンドトリップで検証する。
  * 形式は通るが存在しない日(2026-02-31 / 2026-99-99 等)を DB 到達前に弾く。
  */
-function isRealDate(date: string): boolean {
+export function isRealDate(date: string): boolean {
   const m = DATE_RE.exec(date);
   if (m === null) return false;
   const year = Number(m[1]);
@@ -54,8 +45,8 @@ function isRealDate(date: string): boolean {
   );
 }
 
-const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /* ------------------------------------------------------------ JST 表示 */
 // DB 上のデータは UTC のまま。表示のみ日本時間(UTC+9、DST なし)へ変換する。
@@ -68,7 +59,7 @@ function toJstClock(d: Date): Date {
   return new Date(d.getTime() + JST_OFFSET_MS);
 }
 
-function jstDayStamp(d: Date): string {
+export function jstDayStamp(d: Date): string {
   return toJstClock(d).toISOString().slice(0, 10);
 }
 
@@ -108,6 +99,7 @@ const STYLE = `
   --line-soft: #EFEDE6;
   --brass: #A8874C;
   --brass-ink: #8A6D39;
+  --danger: #A0453C;
   --panel-shadow: 0 1px 2px rgba(28, 38, 55, 0.05);
   --serif: Georgia, "Times New Roman", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
   --sans: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", sans-serif;
@@ -124,6 +116,7 @@ const STYLE = `
     --line-soft: #232D40;
     --brass: #C4A263;
     --brass-ink: #D3B87E;
+    --danger: #D08A82;
     --panel-shadow: none;
   }
 }
@@ -138,7 +131,7 @@ body {
 }
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--brass); }
-a:focus-visible, button:focus-visible, input:focus-visible {
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
   border-radius: 2px;
@@ -169,6 +162,14 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   border: 1px solid var(--ink); border-radius: 6px; padding: 5px 14px;
 }
 .search button:hover { background: var(--brass-ink); border-color: var(--brass-ink); }
+.session-box { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--ink-3); }
+.session-box form { margin: 0; }
+.btn-ghost {
+  font: inherit; font-size: 0.8rem; cursor: pointer;
+  background: transparent; color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px;
+}
+.btn-ghost:hover { color: var(--ink); border-color: var(--ink-3); }
 
 /* stats strip */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); padding: 20px 0 26px; }
@@ -277,6 +278,55 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 .flag.on { color: var(--brass-ink); }
 .flag.off { color: var(--ink-3); }
 .table-scroll { overflow-x: auto; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.row-actions form { margin: 0; display: inline; }
+
+/* forms */
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin-top: 6px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field label { font-size: 0.74rem; letter-spacing: 0.06em; color: var(--ink-2); text-transform: uppercase; }
+.field .hint { font-size: 0.72rem; color: var(--ink-3); letter-spacing: 0; text-transform: none; }
+.field input[type="text"], .field input[type="url"], .field input[type="number"],
+.field input[type="password"], .field textarea {
+  font: inherit; font-size: 0.9rem; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--line); border-radius: 6px;
+  padding: 7px 10px; width: 100%;
+}
+.field textarea { resize: vertical; min-height: 60px; }
+.check-row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; grid-column: 1 / -1; }
+.check-row label { display: flex; gap: 7px; align-items: center; font-size: 0.86rem; color: var(--ink-2); cursor: pointer; }
+.form-actions { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+.btn {
+  font: inherit; font-size: 0.86rem; cursor: pointer;
+  background: var(--ink); color: var(--paper);
+  border: 1px solid var(--ink); border-radius: 6px; padding: 7px 18px;
+}
+.btn:hover { background: var(--brass-ink); border-color: var(--brass-ink); }
+.btn-small {
+  font: inherit; font-size: 0.78rem; cursor: pointer;
+  background: transparent; color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px;
+}
+.btn-small:hover { color: var(--ink); border-color: var(--ink-3); }
+.btn-small.danger { color: var(--danger); }
+.btn-small.danger:hover { border-color: var(--danger); }
+.banner { border-radius: 8px; padding: 10px 14px; font-size: 0.86rem; margin: 14px 0 0; }
+.banner.error { border: 1px solid var(--danger); color: var(--danger); }
+.banner.notice { border: 1px solid var(--brass); color: var(--brass-ink); }
+
+/* auth pages (login / setup) */
+.auth-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.auth-card {
+  width: 100%; max-width: 380px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--panel-shadow); padding: 30px 32px 26px;
+}
+.auth-card .brand { font-size: 1.5rem; margin: 0 0 2px; }
+.auth-card .auth-sub { font-size: 0.8rem; color: var(--ink-3); margin: 0 0 18px; }
+.auth-card .field { margin-top: 12px; }
+.auth-card .btn { width: 100%; margin-top: 18px; padding: 9px 18px; }
+.auth-foot { margin-top: 16px; font-family: var(--mono); font-size: 0.7rem; color: var(--ink-3); text-align: center; }
 
 .empty { padding: 18px 0 8px; font-size: 0.85rem; color: var(--ink-2); }
 .result-note { font-size: 0.82rem; color: var(--ink-2); margin: 2px 0 0; }
@@ -298,23 +348,23 @@ footer.colophon {
   .masthead-meta { flex-basis: 100%; margin-left: 0; }
   .search { margin-left: 0; flex-basis: 100%; }
   .search input[type="text"] { flex: 1; }
+  .form-grid { grid-template-columns: 1fr; }
 }
 `;
 
 /* ------------------------------------------------------------- rendering */
 
-type NavKey = 'dashboard' | 'articles' | 'feeds';
+export type NavKey = 'dashboard' | 'articles' | 'feeds';
 
-interface PageContext {
+export interface PageContext {
   now: Date;
   activeNav: NavKey;
+  /** ログイン中のユーザー名(ツールバー表示・ログアウトボタン用)。 */
+  username: string;
   query?: { q: string; date: string };
 }
 
-function layout(title: string, ctx: PageContext, body: string): string {
-  const q = ctx.query?.q ?? '';
-  const date = ctx.query?.date ?? '';
-  const current = (key: NavKey) => (ctx.activeNav === key ? ' aria-current="page"' : '');
+function htmlDocument(title: string, body: string): string {
   return `<!doctype html>
 <html lang="ja">
 <head>
@@ -323,9 +373,21 @@ function layout(title: string, ctx: PageContext, body: string): string {
 <meta name="robots" content="noindex">
 <title>${escapeHtml(title)}</title>
 <style>${STYLE}</style>
+<script src="/assets/htmx.min.js" defer></script>
 </head>
-<body>
-<div class="shell">
+<body hx-boost="true">
+${body}
+</body>
+</html>`;
+}
+
+export function layout(title: string, ctx: PageContext, body: string): string {
+  const q = ctx.query?.q ?? '';
+  const date = ctx.query?.date ?? '';
+  const current = (key: NavKey) => (ctx.activeNav === key ? ' aria-current="page"' : '');
+  return htmlDocument(
+    title,
+    `<div class="shell">
 <header class="masthead">
   <div class="masthead-row">
     <h1 class="brand">Wire<span class="tick"> /</span> Desk</h1>
@@ -334,15 +396,19 @@ function layout(title: string, ctx: PageContext, body: string): string {
   </div>
   <div class="toolbar">
     <nav class="nav" aria-label="ページ">
-      <a href="/ui"${current('dashboard')}>ダッシュボード</a>
-      <a href="/ui/articles"${current('articles')}>記事一覧</a>
-      <a href="/ui/feeds"${current('feeds')}>フィード</a>
+      <a href="/"${current('dashboard')}>ダッシュボード</a>
+      <a href="/articles"${current('articles')}>記事一覧</a>
+      <a href="/feeds"${current('feeds')}>フィード</a>
     </nav>
-    <form class="search" method="get" action="/ui/articles">
+    <form class="search" method="get" action="/articles">
       <input type="text" name="q" placeholder="タイトルを検索" value="${escapeHtml(q)}" aria-label="タイトル検索">
       <input type="date" name="date" value="${escapeHtml(date)}" aria-label="日付で絞り込み(JST)">
       <button type="submit">表示</button>
     </form>
+    <div class="session-box">
+      <span>${escapeHtml(ctx.username)}</span>
+      <form method="post" action="/logout"><button type="submit" class="btn-ghost">ログアウト</button></form>
+    </div>
   </div>
 </header>
 ${body}
@@ -351,9 +417,23 @@ ${body}
   <span>タイトル・URL・公開日時のみ保存</span>
   <span>収集はサーバー側の due 判定で冪等</span>
 </footer>
+</div>`,
+  );
+}
+
+/** ログイン・セットアップ用のセンタリングレイアウト(ナビなし)。 */
+export function authLayout(title: string, body: string): string {
+  return htmlDocument(
+    title,
+    `<div class="auth-shell">
+<div class="auth-card">
+  <h1 class="brand">Wire<span class="tick"> /</span> Desk</h1>
+  <p class="auth-sub">PERSONAL RSS READER</p>
+  ${body}
+  <p class="auth-foot">タイトル・URL・公開日時のみ保存</p>
 </div>
-</body>
-</html>`;
+</div>`,
+  );
 }
 
 function articleTitleHtml(article: Article): string {
@@ -426,6 +506,7 @@ function feedRail(feeds: Feed[]): string {
 <ul class="feedlist">
 ${items || '<li>フィードが未登録です</li>'}
 </ul>
+<p class="panel-more"><a href="/feeds">フィードを管理する →</a></p>
 </section>`;
 }
 
@@ -449,7 +530,7 @@ const DIGEST_SLOT = `<section class="panel slot">
 
 const WIRE_MAX = 12;
 
-function dashboardBody(input: { last24: Article[]; feeds: Feed[] }): string {
+export function dashboardBody(input: { last24: Article[]; feeds: Feed[] }): string {
   const feedsById = new Map(input.feeds.map((f) => [f.id, f]));
   const lastFetched = input.feeds.reduce<Date | null>(
     (acc, f) =>
@@ -469,7 +550,7 @@ function dashboardBody(input: { last24: Article[]; feeds: Feed[] }): string {
       <h2>今朝更新された記事</h2>
       <p class="panel-note">直近24時間に公開された記事 — 新着順(JST)${input.last24.length > WIRE_MAX ? ` · 上位${WIRE_MAX}件` : ''}</p>
       ${wire}
-      <p class="panel-more"><a href="/ui/articles">記事一覧を見る →</a></p>
+      <p class="panel-more"><a href="/articles">記事一覧を見る →</a></p>
     </section>
   </div>
   <aside class="rail">
@@ -479,7 +560,7 @@ function dashboardBody(input: { last24: Article[]; feeds: Feed[] }): string {
 </main>`;
 }
 
-function articlesBody(input: {
+export function articlesBody(input: {
   articles: Article[];
   feeds: Feed[];
   q: string;
@@ -516,8 +597,81 @@ function articlesBody(input: {
 </main>`;
 }
 
-function feedsBody(feeds: Feed[]): string {
-  const rows = feeds
+/* ----------------------------------------------------- feeds 管理(T4-1) */
+
+/** フォーム再表示用の入力値(バリデーションエラー時に入力を失わせない)。 */
+export interface FeedFormValues {
+  name: string;
+  feedUrl: string;
+  siteUrl: string;
+  fetchIntervalMinutes: string;
+  translate: boolean;
+  fulltextAllowed: boolean;
+  enabled: boolean;
+  tosNote: string;
+}
+
+export const EMPTY_FEED_FORM: FeedFormValues = {
+  name: '',
+  feedUrl: '',
+  siteUrl: '',
+  fetchIntervalMinutes: '60',
+  translate: true,
+  fulltextAllowed: false,
+  enabled: true,
+  tosNote: '',
+};
+
+export function feedToFormValues(feed: Feed): FeedFormValues {
+  return {
+    name: feed.name,
+    feedUrl: feed.feedUrl,
+    siteUrl: feed.siteUrl ?? '',
+    fetchIntervalMinutes: String(feed.fetchIntervalMinutes),
+    translate: feed.translate,
+    fulltextAllowed: feed.fulltextAllowed,
+    enabled: feed.enabled,
+    tosNote: feed.tosNote ?? '',
+  };
+}
+
+function feedFormFields(values: FeedFormValues): string {
+  const checked = (b: boolean) => (b ? ' checked' : '');
+  return `<div class="field">
+  <label for="feed-name">名前</label>
+  <input id="feed-name" type="text" name="name" required maxlength="200" value="${escapeHtml(values.name)}">
+</div>
+<div class="field">
+  <label for="feed-url">フィードURL <span class="hint">(http/https)</span></label>
+  <input id="feed-url" type="url" name="feed_url" required maxlength="2048" placeholder="https://example.com/rss" value="${escapeHtml(values.feedUrl)}">
+</div>
+<div class="field">
+  <label for="site-url">サイトURL <span class="hint">(任意)</span></label>
+  <input id="site-url" type="url" name="site_url" maxlength="2048" value="${escapeHtml(values.siteUrl)}">
+</div>
+<div class="field">
+  <label for="interval">取得間隔(分) <span class="hint">最小15</span></label>
+  <input id="interval" type="number" name="fetch_interval_minutes" required min="15" step="1" value="${escapeHtml(values.fetchIntervalMinutes)}">
+</div>
+<div class="check-row">
+  <label><input type="checkbox" name="enabled"${checked(values.enabled)}> 有効(収集対象)</label>
+  <label><input type="checkbox" name="translate"${checked(values.translate)}> 翻訳対象</label>
+  <label><input type="checkbox" name="fulltext_allowed"${checked(values.fulltextAllowed)}> 本文取得を許可 <span class="hint">※規約確認に基づく手動設定のみ(設計書 §6)</span></label>
+</div>
+<div class="field wide">
+  <label for="tos-note">規約メモ <span class="hint">(fulltext 許可の根拠などを記録)</span></label>
+  <textarea id="tos-note" name="tos_note" maxlength="2000">${escapeHtml(values.tosNote)}</textarea>
+</div>`;
+}
+
+export function feedsBody(input: {
+  feeds: Feed[];
+  error?: string;
+  notice?: string;
+  form?: FeedFormValues;
+}): string {
+  const form = input.form ?? EMPTY_FEED_FORM;
+  const rows = input.feeds
     .map(
       (f) => `<tr>
 <td>${escapeHtml(f.name)}<div class="furl">${escapeHtml(f.feedUrl)}</div></td>
@@ -525,17 +679,34 @@ function feedsBody(feeds: Feed[]): string {
 <td><span class="flag ${f.fulltextAllowed ? 'on' : 'off'}">${f.fulltextAllowed ? '可' : '不可'}</span></td>
 <td class="c">${f.fetchIntervalMinutes}分</td>
 <td class="c">${fmtDateTimeJst(f.lastFetchedAt)}</td>
-<td><a href="/ui/articles?feed=${escapeHtml(f.id)}">記事</a></td>
+<td>
+  <div class="row-actions">
+    <form method="post" action="/feeds/${escapeHtml(f.id)}/toggle"><button type="submit" class="btn-small">${f.enabled ? '無効化' : '有効化'}</button></form>
+    <a class="btn-small" href="/feeds/${escapeHtml(f.id)}">編集</a>
+    <a class="btn-small" href="/articles?feed=${escapeHtml(f.id)}">記事</a>
+    <form method="post" action="/feeds/${escapeHtml(f.id)}/delete" hx-confirm="「${escapeHtml(f.name)}」を削除します。記事も一緒に削除されます。よろしいですか?"><button type="submit" class="btn-small danger">削除</button></form>
+  </div>
+</td>
 </tr>`,
     )
     .join('\n');
   return `<main style="margin-top:22px">
-<section class="panel">
+${input.error ? `<div class="banner error" role="alert">${escapeHtml(input.error)}</div>` : ''}
+${input.notice ? `<div class="banner notice">${escapeHtml(input.notice)}</div>` : ''}
+<section class="panel" style="margin-top:14px">
+<h2>フィードを追加</h2>
+<p class="panel-note">RSS / Atom フィードの URL を登録すると次回の収集から対象になります</p>
+<form method="post" action="/feeds" class="form-grid">
+${feedFormFields(form)}
+<div class="form-actions"><button type="submit" class="btn">追加する</button></div>
+</form>
+</section>
+<section class="panel" style="margin-top:22px">
 <h2>フィード一覧</h2>
 <p class="panel-note">収集対象の情報源と規約フラグ</p>
 <div class="table-scroll">
 <table class="ftable">
-<thead><tr><th>名前 / URL</th><th>状態</th><th>本文取得</th><th>間隔</th><th>最終取得 (JST)</th><th></th></tr></thead>
+<thead><tr><th>名前 / URL</th><th>状態</th><th>本文取得</th><th>間隔</th><th>最終取得 (JST)</th><th>操作</th></tr></thead>
 <tbody>
 ${rows || '<tr><td colspan="6" class="empty">フィードが未登録です</td></tr>'}
 </tbody>
@@ -545,151 +716,70 @@ ${rows || '<tr><td colspan="6" class="empty">フィードが未登録です</td>
 </main>`;
 }
 
-function sendHtml(res: ServerResponse, status: number, html: string): void {
-  res.writeHead(status, {
-    'content-type': 'text/html; charset=utf-8',
-    'cache-control': 'no-store',
-  });
-  res.end(html);
+export function feedEditBody(input: {
+  feed: Feed;
+  error?: string;
+  form?: FeedFormValues;
+}): string {
+  const form = input.form ?? feedToFormValues(input.feed);
+  return `<main style="margin-top:22px">
+${input.error ? `<div class="banner error" role="alert">${escapeHtml(input.error)}</div>` : ''}
+<section class="panel" style="margin-top:14px">
+<h2>フィードを編集</h2>
+<p class="panel-note">${escapeHtml(input.feed.name)} — 最終取得: ${fmtDateTimeJst(input.feed.lastFetchedAt)}</p>
+<form method="post" action="/feeds/${escapeHtml(input.feed.id)}" class="form-grid">
+${feedFormFields(form)}
+<div class="form-actions">
+  <button type="submit" class="btn">保存する</button>
+  <a class="btn-small" href="/feeds">一覧へ戻る</a>
+</div>
+</form>
+</section>
+</main>`;
 }
 
-function errorPage(ctx: PageContext, heading: string, message: string): string {
+/* -------------------------------------------------------- auth pages */
+
+export function loginBody(input: { error?: string; notice?: string } = {}): string {
+  return `${input.error ? `<div class="banner error" role="alert">${escapeHtml(input.error)}</div>` : ''}
+${input.notice ? `<div class="banner notice">${escapeHtml(input.notice)}</div>` : ''}
+<form method="post" action="/login">
+  <div class="field">
+    <label for="username">ユーザー名</label>
+    <input id="username" type="text" name="username" required autocomplete="username" autofocus>
+  </div>
+  <div class="field">
+    <label for="password">パスワード</label>
+    <input id="password" type="password" name="password" required autocomplete="current-password">
+  </div>
+  <button type="submit" class="btn">ログイン</button>
+</form>`;
+}
+
+export function setupBody(input: { error?: string; username?: string } = {}): string {
+  return `${input.error ? `<div class="banner error" role="alert">${escapeHtml(input.error)}</div>` : ''}
+<p style="font-size:0.86rem;color:var(--ink-2);margin:0 0 4px">初回セットアップ: 管理ユーザーを作成してください。</p>
+<form method="post" action="/setup">
+  <div class="field">
+    <label for="username">ユーザー名 <span class="hint">(英数と ._- のみ)</span></label>
+    <input id="username" type="text" name="username" required maxlength="64" pattern="[A-Za-z0-9._\\-]+" autocomplete="username" value="${escapeHtml(input.username ?? '')}" autofocus>
+  </div>
+  <div class="field">
+    <label for="password">パスワード <span class="hint">(8文字以上)</span></label>
+    <input id="password" type="password" name="password" required minlength="8" autocomplete="new-password">
+  </div>
+  <div class="field">
+    <label for="password-confirm">パスワード(確認)</label>
+    <input id="password-confirm" type="password" name="password_confirm" required minlength="8" autocomplete="new-password">
+  </div>
+  <button type="submit" class="btn">作成してはじめる</button>
+</form>`;
+}
+
+export function messagePage(ctx: PageContext, heading: string, message: string): string {
   return layout(
     heading,
     ctx,
     `<main><section class="panel" style="margin-top:22px"><h2>${escapeHtml(heading)}</h2><p class="result-note">${escapeHtml(message)}</p></section></main>`,
-  );
-}
-
-/* ----------------------------------------------------------- data access */
-
-/**
- * JST の1日(00:00〜24:00 JST)に公開された記事を取得する。
- * リポジトリの listByDate は UTC 日付単位のため、JST の1日がまたぐ
- * 2つの UTC 日を取得し、JST 日付で絞り込む。
- */
-async function listByJstDate(repos: Repositories, jstDate: string): Promise<Article[]> {
-  const dayStartUtc = new Date(`${jstDate}T00:00:00.000Z`);
-  const prevUtcDay = new Date(dayStartUtc.getTime() - 24 * 60 * 60_000).toISOString().slice(0, 10);
-  const [prev, same] = await Promise.all([
-    repos.articles.listByDate(prevUtcDay),
-    repos.articles.listByDate(jstDate),
-  ]);
-  const seen = new Set<string>();
-  return [...prev, ...same]
-    .filter((a) => {
-      if (a.publishedAt === null) return false;
-      if (seen.has(a.id)) return false;
-      seen.add(a.id);
-      return jstDayStamp(a.publishedAt) === jstDate;
-    })
-    .sort((a, b) => (b.publishedAt?.getTime() ?? 0) - (a.publishedAt?.getTime() ?? 0));
-}
-
-async function queryArticles(
-  repos: Repositories,
-  filter: { q: string; date: string; feedId: string },
-): Promise<Article[]> {
-  let articles: Article[];
-  if (filter.q !== '') {
-    articles = await repos.articles.searchByTitle(
-      filter.q,
-      filter.feedId !== '' ? { limit: 200, feedId: filter.feedId } : { limit: 200 },
-    );
-  } else if (filter.date !== '') {
-    articles = await listByJstDate(repos, filter.date);
-  } else {
-    articles = await repos.articles.listRecent(
-      filter.feedId !== '' ? { feedId: filter.feedId, limit: 200 } : { limit: 200 },
-    );
-  }
-  if (filter.feedId !== '') {
-    articles = articles.filter((a) => a.feedId === filter.feedId);
-  }
-  return articles;
-}
-
-/* --------------------------------------------------------------- handler */
-
-/** GET /ui, /ui/articles, /ui/feeds を処理。認証失敗時はブラウザの Basic 認証プロンプトを出す。 */
-export async function handleUi(
-  req: IncomingMessage,
-  res: ServerResponse,
-  deps: UiDeps,
-): Promise<void> {
-  const auth = req.headers['authorization'];
-  const authValue = Array.isArray(auth) ? auth[0] : auth;
-  if (!verifyBasicPassword(authValue, deps.uiPassword)) {
-    res.writeHead(401, {
-      'www-authenticate': 'Basic realm="personal-rss-reader", charset="UTF-8"',
-      'content-type': 'text/plain; charset=utf-8',
-    });
-    res.end('authentication required');
-    return;
-  }
-
-  const now = (deps.now ?? (() => new Date()))();
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  const path = url.pathname;
-
-  if (path === '/ui/feeds') {
-    const feeds = await deps.repos.feeds.list();
-    sendHtml(
-      res,
-      200,
-      layout('フィード一覧 — Wire Desk', { now, activeNav: 'feeds' }, feedsBody(feeds)),
-    );
-    return;
-  }
-
-  // 記事一覧ページ。後方互換のため /ui にフィルタ付きで来た場合も同じ表示を返す。
-  const q = url.searchParams.get('q')?.trim() ?? '';
-  const date = url.searchParams.get('date')?.trim() ?? '';
-  const feedId = url.searchParams.get('feed')?.trim() ?? '';
-  const hasFilter = q !== '' || date !== '' || feedId !== '';
-  const isArticlesPath = path === '/ui/articles' || path === '/ui/articles/';
-  const isDashboardPath = path === '/ui' || path === '/ui/';
-
-  if (isArticlesPath || (isDashboardPath && hasFilter)) {
-    const ctx: PageContext = { now, activeNav: 'articles', query: { q, date } };
-    if (date !== '' && !isRealDate(date)) {
-      sendHtml(res, 400, errorPage(ctx, '不正なリクエスト', 'date は実在する日付を YYYY-MM-DD 形式で指定してください。'));
-      return;
-    }
-    if (feedId !== '' && !UUID_RE.test(feedId)) {
-      sendHtml(res, 400, errorPage(ctx, '不正なリクエスト', 'feed の形式が不正です。'));
-      return;
-    }
-    const [feeds, articles] = await Promise.all([
-      deps.repos.feeds.list(),
-      queryArticles(deps.repos, { q, date, feedId }),
-    ]);
-    sendHtml(
-      res,
-      200,
-      layout('記事一覧 — Wire Desk', ctx, articlesBody({ articles, feeds, q, date, feedId })),
-    );
-    return;
-  }
-
-  if (isDashboardPath) {
-    const ctx: PageContext = { now, activeNav: 'dashboard', query: { q: '', date: '' } };
-    const since = new Date(now.getTime() - 24 * 60 * 60_000);
-    const [feeds, last24] = await Promise.all([
-      deps.repos.feeds.list(),
-      deps.repos.articles.listRecent({ since, limit: 200 }),
-    ]);
-    sendHtml(res, 200, layout('Wire Desk — パーソナルRSSリーダー', ctx, dashboardBody({ last24, feeds })));
-    return;
-  }
-
-  sendHtml(
-    res,
-    404,
-    layout(
-      'Not Found',
-      { now, activeNav: 'dashboard' },
-      '<main><section class="panel" style="margin-top:22px"><h2>ページが見つかりません</h2><p class="result-note"><a href="/ui">ダッシュボードへ戻る</a></p></section></main>',
-    ),
   );
 }

@@ -34,27 +34,6 @@ export function verifyBearer(headerValue: string | undefined, expected: string):
   return timingSafeEqualStr(token, expected);
 }
 
-/**
- * `Authorization: Basic ...` のパスワード部分を検証(ユーザー名は不問)。
- * ブラウザ向け read-only UI 用。expected が空なら常に false(fail closed)。
- */
-export function verifyBasicPassword(headerValue: string | undefined, expected: string): boolean {
-  if (expected.length === 0) return false;
-  if (headerValue === undefined) return false;
-  const match = /^Basic[ ]+(.+)$/i.exec(headerValue.trim());
-  if (match === null) return false;
-  let decoded: string;
-  try {
-    decoded = Buffer.from(match[1] as string, 'base64').toString('utf8');
-  } catch {
-    return false;
-  }
-  const sep = decoded.indexOf(':');
-  if (sep === -1) return false;
-  const password = decoded.slice(sep + 1);
-  return timingSafeEqualStr(password, expected);
-}
-
 /** `X-Collector-Token` ヘッダを検証。expected が空なら常に false。 */
 export function verifyCollectorToken(headerValue: string | undefined, expected: string): boolean {
   if (expected.length === 0) return false;

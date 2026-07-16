@@ -9,7 +9,10 @@
   },
   "packageManager": "pnpm@11.7.0",
   "dependencies": {
+    "@hono/node-server": "2.0.8",
     "@modelcontextprotocol/sdk": "1.29.0",
+    "hono": "4.12.30",
+    "htmx.org": "2.0.10",
     "node-pg-migrate": "8.0.4",
     "pg": "8.22.0",
     "rss-parser": "3.13.0",

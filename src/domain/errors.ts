@@ -12,6 +12,13 @@ export class DuplicateFeedUrlError extends Error {
   }
 }
 
+export class DuplicateUsernameError extends Error {
+  constructor(username: string) {
+    super(`username already exists: ${username}`);
+    this.name = 'DuplicateUsernameError';
+  }
+}
+
 export class ValidationError extends Error {
   constructor(message: string) {
     super(message);

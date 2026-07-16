@@ -1,4 +1,14 @@
-import type { Article, Feed, FeedPatch, NewArticle, NewFeed } from './types.ts';
+import type {
+  Article,
+  Feed,
+  FeedPatch,
+  NewArticle,
+  NewFeed,
+  NewSession,
+  NewUser,
+  Session,
+  User,
+} from './types.ts';
 
 /** リポジトリ実装(memory / pg)を差し替えるための共通インターフェース(設計書 §3, D6)。 */
 export interface FeedRepository {
@@ -51,8 +61,30 @@ export interface ArticleRepository {
   setContent(id: string, content: string): Promise<void>;
 }
 
+/** 管理UIログイン用ユーザー(T4-1)。 */
+export interface UserRepository {
+  /** username 重複は DuplicateUsernameError。 */
+  create(input: NewUser): Promise<User>;
+  getById(id: string): Promise<User | null>;
+  getByUsername(username: string): Promise<User | null>;
+  /** 初回セットアップ(/setup)の開放判定に使う。 */
+  count(): Promise<number>;
+}
+
+/** ブラウザセッション。トークン原文は扱わず sha256 ハッシュのみ受け取る。 */
+export interface SessionRepository {
+  create(input: NewSession): Promise<Session>;
+  getByTokenHash(tokenHash: string): Promise<Session | null>;
+  /** 存在しなくてもエラーにしない(ログアウトの二重実行を許容)。 */
+  deleteByTokenHash(tokenHash: string): Promise<void>;
+  /** expiresAt <= now のセッションを削除し、削除件数を返す。 */
+  deleteExpired(now: Date): Promise<number>;
+}
+
 export interface Repositories {
   feeds: FeedRepository;
   articles: ArticleRepository;
+  users: UserRepository;
+  sessions: SessionRepository;
   close(): Promise<void>;
 }

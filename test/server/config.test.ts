@@ -13,8 +13,18 @@ test('loadConfig: 既定値(未設定env)', () => {
   assert.equal(config.cacheFulltext, false);
   assert.equal(config.collectorContact, undefined);
   assert.equal(config.trustEgressProxy, false);
-  assert.equal(config.uiPassword, undefined);
+  assert.equal(config.cookieSecure, false, 'development では Secure なし(HTTP でも使える)');
   assert.equal(config.nodeEnv, 'development');
+});
+
+test('loadConfig: cookieSecure は NODE_ENV=production で true、SESSION_COOKIE_SECURE が優先', () => {
+  assert.equal(loadConfig({ NODE_ENV: 'production' }).cookieSecure, true);
+  assert.equal(
+    loadConfig({ NODE_ENV: 'production', SESSION_COOKIE_SECURE: 'false' }).cookieSecure,
+    false,
+  );
+  assert.equal(loadConfig({ SESSION_COOKIE_SECURE: 'true' }).cookieSecure, true);
+  assert.equal(loadConfig({ SESSION_COOKIE_SECURE: '1' }).cookieSecure, false, '"true" 以外は false');
 });
 
 test('loadConfig: PORT が数値でなければ既定の3000にフォールバック', () => {
@@ -42,13 +52,11 @@ test('loadConfig: 文字列値はそのままトリムして格納される', ()
     DATABASE_URL: '  postgresql://x  ',
     MCP_BEARER_TOKEN: 'mcp-token',
     COLLECTOR_TOKEN: 'collector-token',
-    UI_PASSWORD: 'ui-pass',
     NODE_ENV: 'production',
   });
   assert.equal(config.databaseUrl, 'postgresql://x');
   assert.equal(config.mcpBearerToken, 'mcp-token');
   assert.equal(config.collectorToken, 'collector-token');
-  assert.equal(config.uiPassword, 'ui-pass');
   assert.equal(config.nodeEnv, 'production');
 });
 

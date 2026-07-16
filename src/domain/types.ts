@@ -54,3 +54,32 @@ export interface NewArticle {
   publishedAt?: Date | null;
   lang?: string | null;
 }
+
+/** 管理UIのログインユーザー(T4-1)。passwordHash は scrypt 形式文字列のみ。 */
+export interface User {
+  id: string;
+  username: string;
+  passwordHash: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface NewUser {
+  username: string;
+  passwordHash: string;
+}
+
+/** ブラウザセッション。tokenHash はトークンの sha256 hex(原文は保存しない)。 */
+export interface Session {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+export interface NewSession {
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+}

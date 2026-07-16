@@ -1,11 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { getRequestListener } from '@hono/node-server';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { Repositories } from '../domain/repositories.ts';
 import { createMcpServer } from '../mcp/server.ts';
 import type { FetchFn } from '../mcp/fetch-content.ts';
 import type { LookupFn } from './ssrf.ts';
 import { verifyBearer, verifyCollectorToken } from './auth.ts';
-import { handleUi } from './ui.ts';
+import { createWebApp } from './web.ts';
 
 export interface AppDeps {
   repos: Repositories;
@@ -19,8 +20,8 @@ export interface AppDeps {
   userAgent?: string;
   /** egress プロキシ信頼モード(src/config.ts trustEgressProxy 参照)。既定 false。 */
   trustEgressProxy?: boolean;
-  /** read-only UI(/ui)の Basic 認証パスワード。未設定なら UI 自体を無効化。 */
-  uiPassword?: string;
+  /** セッション Cookie に Secure 属性を付ける(TLS 配下で true)。既定 false。 */
+  cookieSecure?: boolean;
 }
 
 const MAX_COLLECT_BODY_BYTES = 64 * 1024;
@@ -110,6 +111,14 @@ export function createApp(deps: AppDeps): Server {
     await transport.handleRequest(req, res);
   };
 
+  // ブラウザ向け Web UI(Hono)。/healthz /internal/collect /mcp 以外をすべて委譲する。
+  const webApp = createWebApp({
+    repos: deps.repos,
+    cookieSecure: deps.cookieSecure ?? false,
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
+  });
+  const webListener = getRequestListener(webApp.fetch);
+
   const server = createServer((req, res) => {
     const method = req.method ?? 'GET';
     const url = req.url ?? '/';
@@ -138,22 +147,8 @@ export function createApp(deps: AppDeps): Server {
         sendJson(res, 405, { status: 'method_not_allowed' });
         return;
       }
-      // read-only UI(非常口)。uiPassword 未設定なら存在しない扱い(fail closed)。
-      if (path === '/ui' || path?.startsWith('/ui/')) {
-        const uiPassword = deps.uiPassword;
-        if (uiPassword === undefined || uiPassword.length === 0 || method !== 'GET') {
-          sendJson(res, uiPassword ? 405 : 404, uiPassword ? { status: 'method_not_allowed' } : { status: 'not_found' });
-          return;
-        }
-        await handleUi(req, res, { repos: deps.repos, uiPassword });
-        return;
-      }
-      if (method === 'GET' && path === '/') {
-        res.writeHead(302, { location: '/ui' });
-        res.end();
-        return;
-      }
-      sendJson(res, 404, { status: 'not_found' });
+      // それ以外(/, /articles, /feeds, /login, /setup, /assets, 旧 /ui 互換)は Web UI。
+      await webListener(req, res);
     };
 
     handle().catch(() => {
