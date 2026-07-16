@@ -9,14 +9,7 @@ import type {
 import { NotFoundError } from '../../domain/errors.ts';
 import { isForeignKeyViolation } from './errors.ts';
 import { mapArticleRow, type ArticleRow } from './mappers.ts';
-
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
-
-function clampLimit(limit: number | undefined): number {
-  if (limit === undefined) return DEFAULT_LIMIT;
-  return Math.max(1, Math.min(limit, MAX_LIMIT));
-}
+import { clampLimit } from '../limit.ts';
 
 /** ILIKE パターン中の特殊文字(\\ % _)をエスケープする。デフォルトのエスケープ文字は '\\'。 */
 function escapeLikePattern(input: string): string {

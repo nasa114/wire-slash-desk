@@ -71,6 +71,29 @@ export function runArticleRepositoryContract(impl: string, makeRepos: MakeRepos)
     }
   });
 
+  test(t('upsertMany: 未知 feedId を含むバッチは原子的に失敗し1件も保存しない'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await seedFeed(repos);
+      await assert.rejects(
+        repos.articles.upsertMany([
+          { feedId: feed.id, guid: 'ok1', title: 'valid item', url: 'https://s.example.com/ok1' },
+          {
+            feedId: '00000000-0000-0000-0000-000000000000',
+            guid: 'bad1',
+            title: 'unknown feed item',
+            url: 'https://s.example.com/bad1',
+          },
+        ]),
+        NotFoundError,
+      );
+      const remaining = await repos.articles.listRecent({ feedId: feed.id });
+      assert.equal(remaining.length, 0, '未知 feedId を含むバッチは全件ロールバックされること');
+    } finally {
+      await repos.close();
+    }
+  });
+
   test(t('listRecent: since / feedId で絞り込み、publishedAt 降順で返す'), async () => {
     const repos = await makeRepos();
     try {
@@ -119,6 +142,58 @@ export function runArticleRepositoryContract(impl: string, makeRepos: MakeRepos)
     }
   });
 
+  test(t('listRecent: 上限 200 を実証(201件投入)し limit の正規化も検証する'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await seedFeed(repos);
+      const items = Array.from({ length: 201 }, (_, i) => ({
+        feedId: feed.id,
+        guid: `bulk${i}`,
+        title: `bulk ${i}`,
+        url: `https://s.example.com/bulk${i}`,
+        publishedAt: new Date(Date.UTC(2026, 0, 1, 0, i)),
+      }));
+      const result = await repos.articles.upsertMany(items);
+      assert.equal(result.inserted, 201);
+
+      assert.equal(
+        (await repos.articles.listRecent({ limit: 10_000 })).length,
+        200,
+        '201件投入していても上限 200 を超えないこと',
+      );
+
+      // limit の正規化: 0.5→floor→1、NaN→既定50、Infinity→上限200相当
+      assert.equal((await repos.articles.listRecent({ limit: 0.5 })).length, 1);
+      assert.equal((await repos.articles.listRecent({ limit: Number.NaN })).length, 50);
+      assert.equal((await repos.articles.listRecent({ limit: Number.POSITIVE_INFINITY })).length, 200);
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('searchByTitle: 上限 200 を実証(201件投入)'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await seedFeed(repos);
+      const items = Array.from({ length: 201 }, (_, i) => ({
+        feedId: feed.id,
+        guid: `bulksearch${i}`,
+        title: `bulk-match ${i}`,
+        url: `https://s.example.com/bulksearch${i}`,
+        publishedAt: new Date(Date.UTC(2026, 0, 1, 0, i)),
+      }));
+      await repos.articles.upsertMany(items);
+
+      assert.equal(
+        (await repos.articles.searchByTitle('bulk-match', { limit: 10_000 })).length,
+        200,
+        '201件マッチしていても上限 200 を超えないこと',
+      );
+    } finally {
+      await repos.close();
+    }
+  });
+
   test(t('searchByTitle: 大文字小文字を無視した部分一致'), async () => {
     const repos = await makeRepos();
     try {
@@ -153,6 +228,61 @@ export function runArticleRepositoryContract(impl: string, makeRepos: MakeRepos)
       assert.equal(onlyF1[0]?.guid, 'g1');
       const limited = await repos.articles.searchByTitle('release', { feedId: f2.id, limit: 1 });
       assert.equal(limited[0]?.guid, 'g2');
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('searchByTitle: %, _, \\ を含むタイトルへのリテラル一致(ILIKE エスケープの回帰)'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await seedFeed(repos);
+      await repos.articles.upsertMany([
+        { feedId: feed.id, guid: 'pct', title: 'Discount 100% off', url: 'https://s/pct' },
+        { feedId: feed.id, guid: 'pct-decoy', title: '100 items on sale', url: 'https://s/pct-decoy' },
+        { feedId: feed.id, guid: 'us', title: 'variable a_b defined', url: 'https://s/us' },
+        { feedId: feed.id, guid: 'us-decoy', title: 'variable aXb defined', url: 'https://s/us-decoy' },
+        { feedId: feed.id, guid: 'bs', title: 'path back\\slash here', url: 'https://s/bs' },
+        { feedId: feed.id, guid: 'bs-decoy', title: 'backslash mentioned in prose', url: 'https://s/bs-decoy' },
+      ]);
+
+      const pctHits = await repos.articles.searchByTitle('100%');
+      assert.deepEqual(pctHits.map((a) => a.guid), ['pct'], '% はワイルドカードでなくリテラルとして扱われること');
+
+      const usHits = await repos.articles.searchByTitle('a_b');
+      assert.deepEqual(
+        usHits.map((a) => a.guid),
+        ['us'],
+        '_ はワイルドカードでなくリテラルとして扱われ、aXb にはマッチしないこと',
+      );
+
+      const bsHits = await repos.articles.searchByTitle('back\\slash');
+      assert.deepEqual(bsHits.map((a) => a.guid), ['bs'], '\\ を含むクエリも正しくリテラル一致すること');
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('Date の参照隔離: 返却値・入力値を後から mutate しても内部状態は不変'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await seedFeed(repos);
+      const publishedAt = new Date('2026-07-01T00:00:00Z');
+      await repos.articles.upsertMany([
+        { feedId: feed.id, guid: 'iso1', title: 'iso', url: 'https://s/iso1', publishedAt },
+      ]);
+
+      // upsertMany に渡した Date を後から mutate → 保存値は不変であること
+      publishedAt.setFullYear(1999);
+      const afterInputMutation = await repos.articles.listRecent({ feedId: feed.id });
+      assert.equal(afterInputMutation[0]?.publishedAt?.getUTCFullYear(), 2026);
+
+      // listRecent で得た Date を mutate → 再取得した値は不変であること
+      const got = afterInputMutation[0];
+      assert.ok(got?.publishedAt);
+      got.publishedAt.setFullYear(1900);
+      const again = await repos.articles.listRecent({ feedId: feed.id });
+      assert.equal(again[0]?.publishedAt?.getUTCFullYear(), 2026);
     } finally {
       await repos.close();
     }

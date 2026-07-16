@@ -147,6 +147,54 @@ export function runFeedRepositoryContract(impl: string, makeRepos: MakeRepos): v
     }
   });
 
+  test(t('listDue: 境界値(ちょうど interval 経過は due、1分前は not due)'), async () => {
+    const repos = await makeRepos();
+    try {
+      const now = new Date('2026-07-16T12:00:00Z');
+      const exact = await repos.feeds.create({
+        name: 'exact',
+        feedUrl: 'https://exact.example.com/rss',
+        fetchIntervalMinutes: 60,
+      });
+      await repos.feeds.markFetched(exact.id, new Date(now.getTime() - 60 * MIN));
+
+      const almost = await repos.feeds.create({
+        name: 'almost',
+        feedUrl: 'https://almost.example.com/rss',
+        fetchIntervalMinutes: 60,
+      });
+      await repos.feeds.markFetched(almost.id, new Date(now.getTime() - 59 * MIN));
+
+      const due = await repos.feeds.listDue(now);
+      const ids = due.map((f) => f.id);
+      assert.ok(ids.includes(exact.id), 'ちょうど interval 経過(lastFetchedAt + interval <= now)は due であること');
+      assert.ok(!ids.includes(almost.id), '1分前(59分)に取得済みは due でないこと');
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('Feed の Date 参照隔離: markFetched に渡した Date / 返却値の Date を mutate しても内部状態は不変'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await repos.feeds.create({ name: 'A', feedUrl: 'https://iso.example.com/rss' });
+      const fetchedAt = new Date('2026-07-16T00:00:00Z');
+      await repos.feeds.markFetched(feed.id, fetchedAt);
+
+      // markFetched に渡した Date を後から mutate → 保存値は不変であること
+      fetchedAt.setFullYear(1999);
+      const afterInputMutation = await repos.feeds.getById(feed.id);
+      assert.equal(afterInputMutation?.lastFetchedAt?.getUTCFullYear(), 2026);
+
+      // getById で得た Date を mutate → 再取得した値は不変であること
+      afterInputMutation?.lastFetchedAt?.setFullYear(1900);
+      const again = await repos.feeds.getById(feed.id);
+      assert.equal(again?.lastFetchedAt?.getUTCFullYear(), 2026);
+    } finally {
+      await repos.close();
+    }
+  });
+
   test(t('markFetched は lastFetchedAt / etag / lastModified を更新する'), async () => {
     const repos = await makeRepos();
     try {

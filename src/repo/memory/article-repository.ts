@@ -7,15 +7,8 @@ import type {
   UpsertResult,
 } from '../../domain/repositories.ts';
 import { NotFoundError } from '../../domain/errors.ts';
-import type { MemoryStore } from './store.ts';
-
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
-
-function clampLimit(limit: number | undefined): number {
-  if (limit === undefined) return DEFAULT_LIMIT;
-  return Math.max(1, Math.min(limit, MAX_LIMIT));
-}
+import { clampLimit } from '../limit.ts';
+import { cloneArticle, type MemoryStore } from './store.ts';
 
 /** publishedAt 降順(null は最後)、同値は fetchedAt 降順。 */
 function byRecency(a: Article, b: Article): number {
@@ -33,10 +26,15 @@ export class MemoryArticleRepository implements ArticleRepository {
   }
 
   async upsertMany(items: NewArticle[]): Promise<UpsertResult> {
+    // 事前検証: 未知の feedId が1件でもあれば何も保存せず NotFoundError(pg 実装と同じ原子性)。
+    const distinctFeedIds = [...new Set(items.map((item) => item.feedId))];
+    for (const feedId of distinctFeedIds) {
+      if (!this.store.feeds.has(feedId)) throw new NotFoundError('feed', feedId);
+    }
+
     let inserted = 0;
     let skipped = 0;
     for (const item of items) {
-      if (!this.store.feeds.has(item.feedId)) throw new NotFoundError('feed', item.feedId);
       const exists = [...this.store.articles.values()].some(
         (a) => a.feedId === item.feedId && a.guid === item.guid,
       );
@@ -50,7 +48,8 @@ export class MemoryArticleRepository implements ArticleRepository {
         guid: item.guid,
         title: item.title,
         url: item.url,
-        publishedAt: item.publishedAt ?? null,
+        // 呼び出し側の Date インスタンスをそのまま保持しない(後から mutate されても内部状態が壊れないように複製)。
+        publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
         lang: item.lang ?? null,
         content: null, // 収集経路では常に null(設計書 §5 不変条件)
         fetchedAt: new Date(),
@@ -63,7 +62,7 @@ export class MemoryArticleRepository implements ArticleRepository {
 
   async getById(id: string): Promise<Article | null> {
     const article = this.store.articles.get(id);
-    return article ? { ...article } : null;
+    return article ? cloneArticle(article) : null;
   }
 
   async listRecent(options: ListRecentOptions = {}): Promise<Article[]> {
@@ -79,7 +78,7 @@ export class MemoryArticleRepository implements ArticleRepository {
       })
       .sort(byRecency)
       .slice(0, limit)
-      .map((a) => ({ ...a }));
+      .map(cloneArticle);
   }
 
   async searchByTitle(query: string, options: SearchOptions = {}): Promise<Article[]> {
@@ -92,7 +91,7 @@ export class MemoryArticleRepository implements ArticleRepository {
       )
       .sort(byRecency)
       .slice(0, clampLimit(options.limit))
-      .map((a) => ({ ...a }));
+      .map(cloneArticle);
   }
 
   async listByDate(date: string): Promise<Article[]> {
@@ -106,7 +105,7 @@ export class MemoryArticleRepository implements ArticleRepository {
           a.publishedAt.getTime() < end.getTime(),
       )
       .sort(byRecency)
-      .map((a) => ({ ...a }));
+      .map(cloneArticle);
   }
 
   async setContent(id: string, content: string): Promise<void> {
