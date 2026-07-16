@@ -1,0 +1,34 @@
+name: Feed Collection
+
+on:
+  schedule:
+    # 30分ごとにRSSフィードを収集
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger feed collection
+        run: |
+          curl -fsS -m 30 -X POST \
+            -H "X-Collector-Token: ${{ secrets.COLLECTOR_TOKEN }}" \
+            "${{ vars.APP_URL }}/internal/collect"
+
+# 設定方法:
+# 1. GitHub リポジトリの Settings → Secrets and variables → Actions で以下を追加:
+#    - COLLECTOR_TOKEN: POST /internal/collect エンドポイント用の共有シークレット
+#                      生成例: openssl rand -hex 32
+#
+# 2. Variables タブで以下を追加:
+#    - APP_URL: デプロイ先のアプリケーションURL
+#               例: https://rss-reader.example.com
+#
+# 3. このワークフローを有効化後、Actions タブから手動実行で動作確認
+#
+# 注意:
+#   - トークンは必ず secrets に設定し、ログに出力されないようにする
+#   - APP_URL は vars (public variables) で構いません
+#   - cron 設定の正確性は GitHub に依存します（遅延の可能性あり）
