@@ -152,6 +152,30 @@ function stripBrackets(host: string): string {
  * - IP リテラルはその場で判定
  * 問題なければ解析済み URL を返し、違反なら SsrfError を投げる。
  */
+/**
+ * egress プロキシを信頼する環境向けの軽量検証(TRUST_EGRESS_PROXY=true)。
+ * ローカル DNS が使えない(解決はプロキシが代行する)前提のため名前解決は行わず、
+ * スキームと IP リテラルのみ検査する。接続先の最終制御はプロキシの
+ * 許可リスト(例: squid の allowed-domains)が担う。
+ */
+export function assertProxySafeHttpUrl(rawUrl: string): URL {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new SsrfError('invalid URL');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new SsrfError('unsupported URL scheme');
+  }
+  const host = stripBrackets(url.hostname);
+  if (host.length === 0) throw new SsrfError('empty host');
+  if (isIP(host) !== 0 && isPrivateAddress(host)) {
+    throw new SsrfError('URL resolves to a non-public address');
+  }
+  return url;
+}
+
 export async function assertPublicHttpUrl(rawUrl: string, lookupFn: LookupFn): Promise<URL> {
   let url: URL;
   try {

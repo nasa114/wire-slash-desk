@@ -16,6 +16,8 @@ export interface AppDeps {
   lookupFn?: LookupFn;
   now?: () => Date;
   userAgent?: string;
+  /** egress プロキシ信頼モード(src/config.ts trustEgressProxy 参照)。既定 false。 */
+  trustEgressProxy?: boolean;
 }
 
 const MAX_COLLECT_BODY_BYTES = 64 * 1024;
@@ -94,6 +96,7 @@ export function createApp(deps: AppDeps): Server {
       lookupFn: deps.lookupFn,
       now: deps.now,
       userAgent: deps.userAgent,
+      trustEgressProxy: deps.trustEgressProxy,
     });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {

@@ -1,5 +1,5 @@
 import type { Repositories } from '../domain/repositories.ts';
-import { assertPublicHttpUrl, type LookupFn } from '../server/ssrf.ts';
+import { assertProxySafeHttpUrl, assertPublicHttpUrl, type LookupFn } from '../server/ssrf.ts';
 
 /** テストから注入できる fetch。既定はグローバル fetch。 */
 export type FetchFn = (
@@ -26,6 +26,13 @@ export interface FetchContentDeps {
   lookupFn: LookupFn;
   now: () => Date;
   userAgent: string;
+  /**
+   * egress プロキシ(squid 等)経由の環境で true。ローカル DNS 解決による
+   * 公開 IP 検査をスキップする(スキーム・IP リテラル・同一ホストリダイレクト・
+   * レートリミットの検査は維持)。接続先制御はプロキシの許可リストに委譲。
+   * 既定 false(直接エグレス環境では必ず DNS 検査を行う)。
+   */
+  trustEgressProxy?: boolean;
 }
 
 const MAX_REDIRECTS = 3;
@@ -151,8 +158,10 @@ export async function fetchArticleContent(
   let response: FetchResponse | null = null;
 
   for (;;) {
-    // 各ホップで再度 SSRF 検証。
-    const parsed = await assertPublicHttpUrl(currentUrl, deps.lookupFn);
+    // 各ホップで再度 SSRF 検証。プロキシ信頼モードでは DNS 解決なしの軽量検証。
+    const parsed = deps.trustEgressProxy
+      ? assertProxySafeHttpUrl(currentUrl)
+      : await assertPublicHttpUrl(currentUrl, deps.lookupFn);
     // リダイレクトは同一ホストのみ許可。
     if (parsed.hostname !== originalHost) {
       throw new FetchContentError('redirect to a different host is not allowed');

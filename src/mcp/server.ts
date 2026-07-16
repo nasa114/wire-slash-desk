@@ -16,6 +16,8 @@ export interface McpServerDeps {
   lookupFn?: LookupFn;
   now?: () => Date;
   userAgent?: string;
+  /** egress プロキシ信頼モード(src/config.ts trustEgressProxy 参照)。既定 false。 */
+  trustEgressProxy?: boolean;
 }
 
 function toIso(date: Date | null): string | null {
@@ -72,6 +74,7 @@ export function createMcpServer(deps: McpServerDeps): McpServer {
     lookupFn: deps.lookupFn ?? defaultLookup,
     now: deps.now ?? (() => new Date()),
     userAgent: deps.userAgent ?? 'personal-rss-reader/0.1',
+    trustEgressProxy: deps.trustEgressProxy ?? false,
   };
 
   server.registerTool(

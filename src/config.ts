@@ -8,6 +8,12 @@ export interface AppConfig {
   cacheFulltext: boolean;
   /** User-Agent に載せる連絡先(礼儀)。設計書 §5。 */
   collectorContact: string | undefined;
+  /**
+   * egress プロキシ経由の環境(ローカル DNS 不可)で true。
+   * SSRF ガードの DNS 事前解決をスキップし、接続先制御をプロキシの
+   * 許可リストに委譲する。直接エグレス環境では必ず false のままにすること。
+   */
+  trustEgressProxy: boolean;
   nodeEnv: string;
 }
 
@@ -29,6 +35,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     // 'true' のみを有効とみなす。それ以外(未設定・'false'・'1' など)は false。
     cacheFulltext: readString(env, 'CACHE_FULLTEXT') === 'true',
     collectorContact: readString(env, 'COLLECTOR_CONTACT'),
+    trustEgressProxy: readString(env, 'TRUST_EGRESS_PROXY') === 'true',
     nodeEnv: readString(env, 'NODE_ENV') ?? 'development',
   };
 }

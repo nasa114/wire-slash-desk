@@ -64,6 +64,7 @@ async function main(): Promise<void> {
     mcpBearerToken: config.mcpBearerToken as string,
     collectorToken: config.collectorToken as string,
     cacheFulltext: config.cacheFulltext,
+    trustEgressProxy: config.trustEgressProxy,
     userAgent,
   });
 
