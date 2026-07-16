@@ -322,11 +322,23 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
   box-shadow: var(--panel-shadow); padding: 30px 32px 26px;
 }
+/* ログイン画面のみ: 真鍮線の幾何学模様背景(/assets/login-bg.svg)とガラス質のカード */
+.auth-shell.login {
+  background-image: url('/assets/login-bg.svg');
+  background-size: cover;
+  background-position: center;
+}
+.auth-shell.login .auth-card {
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-color: color-mix(in srgb, var(--brass) 40%, var(--line));
+  box-shadow: 0 20px 60px rgba(28, 38, 55, 0.14);
+}
 .auth-card .brand { font-size: 1.5rem; margin: 0 0 2px; }
 .auth-card .auth-sub { font-size: 0.8rem; color: var(--ink-3); margin: 0 0 18px; }
 .auth-card .field { margin-top: 12px; }
 .auth-card .btn { width: 100%; margin-top: 18px; padding: 9px 18px; }
-.auth-foot { margin-top: 16px; font-family: var(--mono); font-size: 0.7rem; color: var(--ink-3); text-align: center; }
 
 .empty { padding: 18px 0 8px; font-size: 0.85rem; color: var(--ink-2); }
 .result-note { font-size: 0.82rem; color: var(--ink-2); margin: 2px 0 0; }
@@ -364,7 +376,7 @@ export interface PageContext {
   query?: { q: string; date: string };
 }
 
-function htmlDocument(title: string, body: string): string {
+function htmlDocument(title: string, body: string, extraScripts = ''): string {
   return `<!doctype html>
 <html lang="ja">
 <head>
@@ -373,7 +385,7 @@ function htmlDocument(title: string, body: string): string {
 <meta name="robots" content="noindex">
 <title>${escapeHtml(title)}</title>
 <style>${STYLE}</style>
-<script src="/assets/htmx.min.js" defer></script>
+<script src="/assets/htmx.min.js" defer></script>${extraScripts}
 </head>
 <body hx-boost="true">
 ${body}
@@ -414,25 +426,26 @@ export function layout(title: string, ctx: PageContext, body: string): string {
 ${body}
 <footer class="colophon">
   <span>時刻はすべて日本時間(JST)</span>
-  <span>タイトル・URL・公開日時のみ保存</span>
-  <span>収集はサーバー側の due 判定で冪等</span>
 </footer>
 </div>`,
   );
 }
 
-/** ログイン・セットアップ用のセンタリングレイアウト(ナビなし)。 */
-export function authLayout(title: string, body: string): string {
+/**
+ * ログイン・セットアップ用のセンタリングレイアウト(ナビなし)。
+ * `login: true` はログイン画面専用の装飾(幾何学模様背景・失敗アラート用JS)を有効化する。
+ */
+export function authLayout(title: string, body: string, opts: { login?: boolean } = {}): string {
   return htmlDocument(
     title,
-    `<div class="auth-shell">
+    `<div class="auth-shell${opts.login ? ' login' : ''}">
 <div class="auth-card">
   <h1 class="brand">Wire<span class="tick"> /</span> Desk</h1>
   <p class="auth-sub">PERSONAL RSS READER</p>
   ${body}
-  <p class="auth-foot">タイトル・URL・公開日時のみ保存</p>
 </div>
 </div>`,
+    opts.login ? '\n<script src="/assets/login.js" defer></script>' : '',
   );
 }
 
@@ -540,7 +553,7 @@ export function dashboardBody(input: { last24: Article[]; feeds: Feed[] }): stri
   const wireItems = input.last24.slice(0, WIRE_MAX);
   const wire =
     wireItems.length === 0
-      ? '<p class="empty">直近24時間の記事はまだありません。収集はトリガー実行時の due 判定で行われます。</p>'
+      ? '<p class="empty">直近24時間の記事はまだありません。</p>'
       : `<ol class="wire">\n${wireItems.map((a) => wireItem(a, feedsById)).join('\n')}\n</ol>`;
   return `${statsStrip({ last24Count: input.last24.length, feeds: input.feeds, lastFetched })}
 <main class="grid">
@@ -741,7 +754,9 @@ ${feedFormFields(form)}
 /* -------------------------------------------------------- auth pages */
 
 export function loginBody(input: { error?: string; notice?: string } = {}): string {
-  return `${input.error ? `<div class="banner error" role="alert">${escapeHtml(input.error)}</div>` : ''}
+  // data-login-alert: /assets/login.js が読み取り window.alert を出す。
+  // 文言はどのフィールドが誤りかを判別できないものだけを渡すこと(ユーザー列挙対策)。
+  return `${input.error ? `<div class="banner error" role="alert" data-login-alert="${escapeHtml(input.error)}">${escapeHtml(input.error)}</div>` : ''}
 ${input.notice ? `<div class="banner notice">${escapeHtml(input.notice)}</div>` : ''}
 <form method="post" action="/login">
   <div class="field">

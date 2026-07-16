@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="brassGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#C4A263" stop-opacity="0.08"/>
+      <stop offset="0.55" stop-color="#A8874C" stop-opacity="0.025"/>
+      <stop offset="1" stop-color="#A8874C" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="edgeGlowH" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C4A263" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#A8874C" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="edgeGlowV" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#C4A263" stop-opacity="0.055"/>
+      <stop offset="1" stop-color="#A8874C" stop-opacity="0"/>
+    </linearGradient>
+
+    <pattern id="hexGrid" width="104" height="60" patternUnits="userSpaceOnUse">
+      <g fill="none" stroke="#A8874C" stroke-width="1" opacity="0.11">
+        <path d="M0 30 26 0h52l26 30-26 30H26Z"/>
+        <path d="M26 0 52 30 78 0M26 60 52 30l26 30"/>
+        <path d="M0 30h104"/>
+      </g>
+      <g fill="none" stroke="#C4A263" stroke-width="1" opacity="0.065">
+        <path d="M26 0v60M78 0v60"/>
+      </g>
+    </pattern>
+
+    <pattern id="asanoha" width="120" height="104" patternUnits="userSpaceOnUse">
+      <g fill="none" stroke="#C4A263" stroke-width="1" opacity="0.12">
+        <path d="M0 52 30 0h60l30 52-30 52H30Z"/>
+        <path d="M60 52 30 0M60 52 90 0M60 52 120 52M60 52 90 104M60 52 30 104M60 52 0 52"/>
+      </g>
+      <g fill="none" stroke="#A8874C" stroke-width="1" opacity="0.065">
+        <path d="M0 52 60 0l60 52-60 52ZM30 0l30 52L90 0M30 104l30-52 30 52"/>
+      </g>
+    </pattern>
+
+    <g id="fan" fill="none" stroke-linecap="round">
+      <path d="M0 0A330 330 0 0 1 330 330" stroke="#C4A263" stroke-width="1.5" opacity="0.16"/>
+      <path d="M0 0A270 270 0 0 1 270 270" stroke="#A8874C" stroke-width="1" opacity="0.13"/>
+      <path d="M0 0A210 210 0 0 1 210 210" stroke="#C4A263" stroke-width="1" opacity="0.1"/>
+      <path d="M0 0 330 0M0 0 319 85M0 0 286 165M0 0 233 233M0 0 165 286M0 0 85 319M0 0 0 330" stroke="#A8874C" stroke-width="1.2" opacity="0.14"/>
+      <path d="M0 0 304 126M0 0 126 304" stroke="#C4A263" stroke-width="1" opacity="0.08"/>
+      <path d="M108 0A108 108 0 0 1 0 108M162 0A162 162 0 0 1 0 162" stroke="#C4A263" stroke-width="1" opacity="0.1"/>
+    </g>
+
+    <g id="crown" fill="none">
+      <path d="M-240 0Q0 150 240 0M-190 0Q0 112 190 0M-140 0Q0 76 140 0" stroke="#A8874C" stroke-width="1.2" opacity="0.13"/>
+      <path d="M0 0v126M-40 4 0 126 40 4M-82 14 0 126 82 14M-126 28 0 126 126 28M-174 48 0 126 174 48M-220 76 0 126 220 76" stroke="#C4A263" stroke-width="1" opacity="0.09"/>
+      <path d="M-240 0h480" stroke="#A8874C" stroke-width="1" opacity="0.08"/>
+    </g>
+  </defs>
+
+  <ellipse cx="800" cy="500" rx="690" ry="470" fill="url(#brassGlow)"/>
+  <rect x="0" y="0" width="1600" height="245" fill="url(#edgeGlowH)"/>
+  <rect x="0" y="755" width="1600" height="245" fill="url(#edgeGlowH)" transform="rotate(180 800 877.5)"/>
+  <rect x="0" y="0" width="250" height="1000" fill="url(#edgeGlowV)"/>
+  <rect x="1350" y="0" width="250" height="1000" fill="url(#edgeGlowV)" transform="rotate(180 1475 500)"/>
+
+  <g opacity="0.9">
+    <path d="M0 0H1600V142H0Z" fill="url(#asanoha)"/>
+    <path d="M0 858H1600V1000H0Z" fill="url(#asanoha)"/>
+    <path d="M0 142H182V858H0Z" fill="url(#hexGrid)"/>
+    <path d="M1418 142H1600V858H1418Z" fill="url(#hexGrid)"/>
+  </g>
+
+  <g fill="none" stroke="#A8874C" stroke-width="1" opacity="0.08">
+    <path d="M0 160H540L610 90h380l70 70h540"/>
+    <path d="M0 184h550l70-70h360l70 70h550"/>
+    <path d="M0 840h540l70 70h380l70-70h540"/>
+    <path d="M0 816h550l70 70h360l70-70h550"/>
+  </g>
+
+  <g fill="none" stroke="#C4A263" stroke-width="1.2" opacity="0.1">
+    <path d="M254 0v116l58 58v154"/>
+    <path d="M1346 0v116l-58 58v154"/>
+    <path d="M254 1000V884l58-58V672"/>
+    <path d="M1346 1000V884l-58-58V672"/>
+    <path d="M278 0v106l58 58v128"/>
+    <path d="M1322 0v106l-58 58v128"/>
+    <path d="M278 1000V894l58-58V708"/>
+    <path d="M1322 1000V894l-58-58V708"/>
+  </g>
+
+  <use xlink:href="#fan" x="0" y="0"/>
+  <use xlink:href="#fan" transform="translate(1600 0) rotate(90)"/>
+  <use xlink:href="#fan" transform="translate(1600 1000) rotate(180)"/>
+  <use xlink:href="#fan" transform="translate(0 1000) rotate(270)"/>
+
+  <use xlink:href="#crown" transform="translate(800 0)"/>
+  <use xlink:href="#crown" transform="translate(800 1000) rotate(180)"/>
+
+  <g fill="none" stroke="#C4A263" stroke-width="1" opacity="0.065">
+    <path d="M410 250 470 190l60 60-60 60Zm660 0 60-60 60 60-60 60Z"/>
+    <path d="M410 750 470 690l60 60-60 60Zm660 0 60-60 60 60-60 60Z"/>
+    <path d="M470 190v120m-60-60h120M1130 190v120m-60-60h120"/>
+    <path d="M470 690v120m-60-60h120M1130 690v120m-60-60h120"/>
+  </g>
+
+  <g fill="none" stroke="#A8874C" stroke-width="1.2" opacity="0.07">
+    <path d="M0 500h118l42-42 42 42-42 42-42-42"/>
+    <path d="M1600 500h-118l-42-42-42 42 42 42 42-42"/>
+    <path d="M800 0v72l-34 34 34 34 34-34-34-34"/>
+    <path d="M800 1000v-72l-34-34 34-34 34 34-34 34"/>
+  </g>
+</svg>

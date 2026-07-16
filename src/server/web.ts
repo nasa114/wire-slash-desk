@@ -53,6 +53,17 @@ function loadHtmxSource(): string {
   return htmxSource;
 }
 
+/** src/server/assets/ の静的ファイル(ログイン画面の背景SVG・アラートJS)。 */
+const assetCache = new Map<string, string>();
+function loadAsset(name: string): string {
+  let content = assetCache.get(name);
+  if (content === undefined) {
+    content = readFileSync(new URL(`./assets/${name}`, import.meta.url), 'utf8');
+    assetCache.set(name, content);
+  }
+  return content;
+}
+
 /* ----------------------------------------------------------- data access */
 
 /**
@@ -264,6 +275,18 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     return c.body(loadHtmxSource());
   });
 
+  app.get('/assets/login.js', (c) => {
+    c.header('cache-control', 'public, max-age=86400');
+    c.header('content-type', 'text/javascript; charset=utf-8');
+    return c.body(loadAsset('login.js'));
+  });
+
+  app.get('/assets/login-bg.svg', (c) => {
+    c.header('cache-control', 'public, max-age=86400');
+    c.header('content-type', 'image/svg+xml; charset=utf-8');
+    return c.body(loadAsset('login-bg.svg'));
+  });
+
   /* ------------------------------------------- setup(初回のみ開放) */
 
   app.get('/setup', async (c) => {
@@ -307,7 +330,10 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     if ((await deps.repos.users.count()) === 0) return c.redirect('/setup', 302);
     if ((await resolveUser(c)) !== null) return c.redirect('/', 302);
     const notice = c.req.query('created') === '1' ? '管理ユーザーを作成しました。ログインしてください。' : undefined;
-    return html(c, authLayout('ログイン — Wire Desk', loginBody(notice !== undefined ? { notice } : {})));
+    return html(
+      c,
+      authLayout('ログイン — Wire Desk', loginBody(notice !== undefined ? { notice } : {}), { login: true }),
+    );
   });
 
   app.post('/login', async (c) => {
@@ -324,9 +350,14 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       user !== null;
 
     if (!ok) {
+      // 文言はユーザー名/パスワードのどちらが誤りかを判別できないものに固定する(列挙対策)。
       return html(
         c,
-        authLayout('ログイン — Wire Desk', loginBody({ error: 'ユーザー名またはパスワードが違います。' })),
+        authLayout(
+          'ログイン — Wire Desk',
+          loginBody({ error: 'ユーザー名またはパスワードが正しくありません。' }),
+          { login: true },
+        ),
         401,
       );
     }
