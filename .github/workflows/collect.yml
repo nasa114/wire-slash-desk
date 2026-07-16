@@ -12,10 +12,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Trigger feed collection
+        env:
+          COLLECTOR_TOKEN: ${{ secrets.COLLECTOR_TOKEN }}
+          APP_URL: ${{ vars.APP_URL }}
         run: |
           curl -fsS -m 30 -X POST \
-            -H "X-Collector-Token: ${{ secrets.COLLECTOR_TOKEN }}" \
-            "${{ vars.APP_URL }}/internal/collect"
+            -H "X-Collector-Token: $COLLECTOR_TOKEN" \
+            "$APP_URL/internal/collect"
 
 # 設定方法:
 # 1. GitHub リポジトリの Settings → Secrets and variables → Actions で以下を追加:

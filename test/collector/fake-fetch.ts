@@ -5,6 +5,8 @@
 export interface FetchCall {
   url: string;
   headers: Record<string, string>;
+  /** collector が渡した AbortSignal(未指定なら undefined)。タイムアウト検証用。 */
+  signal?: AbortSignal;
 }
 
 export type FakeFetch = typeof fetch & { calls: FetchCall[] };
@@ -13,6 +15,7 @@ export type FakeFetchHandler = (
   url: string,
   headers: Record<string, string>,
   callIndex: number,
+  signal?: AbortSignal,
 ) => Response | Promise<Response>;
 
 export function createFakeFetch(handler: FakeFetchHandler): FakeFetch {
@@ -20,9 +23,10 @@ export function createFakeFetch(handler: FakeFetchHandler): FakeFetch {
   const fn = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input.toString();
     const headers = normalizeHeaders(init?.headers);
+    const signal = init?.signal ?? undefined;
     const callIndex = calls.length;
-    calls.push({ url, headers });
-    return handler(url, headers, callIndex);
+    calls.push({ url, headers, signal });
+    return handler(url, headers, callIndex, signal);
   }) as FakeFetch;
   fn.calls = calls;
   return fn;

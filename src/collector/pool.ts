@@ -21,8 +21,27 @@ export async function runWithConcurrency<T, R>(
     }
   }
 
-  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  const normalizedConcurrency = normalizeConcurrency(concurrency);
+  const workerCount = Math.max(1, Math.min(normalizedConcurrency, items.length));
   await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
   return results;
+}
+
+/** concurrency が非有限(NaN 等)または不正な値のときに使う既定値。安全側(直列)に倒す。 */
+const FALLBACK_CONCURRENCY = 1;
+
+/**
+ * concurrency を検証・正規化する。
+ *
+ * - NaN や Infinity など有限数でない値は、Math.max/Math.min に伝播すると
+ *   NaN が全体を汚染したり Array.from({length: Infinity}) が例外になったりするため、
+ *   既定値 (FALLBACK_CONCURRENCY) にフォールバックする(呼び出し側の入力不備で
+ *   収集全体を止めないため、ここでは例外を投げない方針)。
+ * - 有限だが 1 未満の値(0 や 0.5、負数)は Math.floor 後 1 に切り上げる。
+ */
+function normalizeConcurrency(concurrency: number): number {
+  if (!Number.isFinite(concurrency)) return FALLBACK_CONCURRENCY;
+  const floored = Math.floor(concurrency);
+  return floored < 1 ? 1 : floored;
 }

@@ -46,6 +46,32 @@ test('mapFeedItemToArticle: guid が無ければ sha256(url) の hex になる',
   assert.equal(result?.guid, sha256Hex('https://example.com/no-guid'));
 });
 
+test('mapFeedItemToArticle: guid が無く Atom の id があれば id を guid として採用する', () => {
+  // rss-parser 3.13.0 は Atom の <id> を item.guid ではなく item.id に格納するため、
+  // Parser.Item の型には id が無い(型定義上は宣言されていない実行時フィールド)。
+  const item = { title: 'Atom Entry', link: 'https://example.com/atom/1', id: 'atom-entry-1' };
+  const result = mapFeedItemToArticle(FEED_ID, item, null);
+  assert.equal(result?.guid, 'atom-entry-1');
+});
+
+test('mapFeedItemToArticle: guid があれば id より優先される', () => {
+  const item = { title: 'X', link: 'https://example.com/x', guid: 'rss-guid', id: 'atom-id' };
+  const result = mapFeedItemToArticle(FEED_ID, item, null);
+  assert.equal(result?.guid, 'rss-guid');
+});
+
+test('mapFeedItemToArticle: id が空文字なら不採用で sha256(url) にフォールバックする', () => {
+  const item = { title: 'X', link: 'https://example.com/empty-id', id: '' };
+  const result = mapFeedItemToArticle(FEED_ID, item, null);
+  assert.equal(result?.guid, sha256Hex('https://example.com/empty-id'));
+});
+
+test('mapFeedItemToArticle: guid も id も無ければ sha256(url) の hex になる(回帰)', () => {
+  const item: Parser.Item = { title: 'X', link: 'https://example.com/no-guid-no-id' };
+  const result = mapFeedItemToArticle(FEED_ID, item, null);
+  assert.equal(result?.guid, sha256Hex('https://example.com/no-guid-no-id'));
+});
+
 test('mapFeedItemToArticle: 不正な日付は publishedAt=null になる', () => {
   const item: Parser.Item = { title: 'X', link: 'https://example.com/bad-date', pubDate: 'not-a-date' };
   const result = mapFeedItemToArticle(FEED_ID, item, null);
