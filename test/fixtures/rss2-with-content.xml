@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Example RSS Feed</title>
+    <link>https://example.com</link>
+    <description>An example feed for collector tests</description>
+    <language>en-us</language>
+    <item>
+      <title>First Post</title>
+      <link>https://example.com/posts/1</link>
+      <guid isPermaLink="false">post-1-guid</guid>
+      <pubDate>Mon, 15 Jul 2026 10:00:00 GMT</pubDate>
+      <description><![CDATA[<p>This is the short description body that must never be stored.</p>]]></description>
+      <content:encoded><![CDATA[<p>This is the FULL article body text that must never be stored in articles.content.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title>Second Post No Guid</title>
+      <link>https://example.com/posts/2</link>
+      <pubDate>Tue, 16 Jul 2026 09:30:00 GMT</pubDate>
+      <description><![CDATA[Another body that should be discarded.]]></description>
+      <content:encoded><![CDATA[Full text of the second post, should not persist.]]></content:encoded>
+    </item>
+    <item>
+      <title>No Link Item</title>
+      <guid>post-3-guid</guid>
+      <pubDate>Wed, 17 Jul 2026 09:30:00 GMT</pubDate>
+      <description>Body with no link; whole item should be skipped.</description>
+    </item>
+  </channel>
+</rss>

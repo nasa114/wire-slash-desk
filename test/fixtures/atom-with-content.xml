@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom Example Feed</title>
+  <link href="https://example.com/atom" rel="alternate"/>
+  <updated>2026-07-15T12:00:00Z</updated>
+  <id>urn:uuid:feed-atom-example</id>
+  <entry>
+    <title>Atom First Entry</title>
+    <link href="https://example.com/atom/1" rel="alternate"/>
+    <id>atom-entry-1</id>
+    <updated>2026-07-15T12:00:00Z</updated>
+    <published>2026-07-15T11:00:00Z</published>
+    <summary>Summary text that must be discarded.</summary>
+    <content type="html"><![CDATA[<p>Full atom content body, must not be persisted.</p>]]></content>
+  </entry>
+  <entry>
+    <title>Atom Second Entry</title>
+    <link href="https://example.com/atom/2" rel="alternate"/>
+    <updated>2026-07-16T08:00:00Z</updated>
+    <content type="html"><![CDATA[Body text for entry two, must not be persisted.]]></content>
+  </entry>
+</feed>
