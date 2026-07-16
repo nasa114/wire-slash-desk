@@ -26,6 +26,37 @@ function fmt(date: Date | null): string {
   return date === null ? '—' : date.toISOString().replace('T', ' ').slice(0, 16) + 'Z';
 }
 
+/**
+ * http:/https: のみを安全なリンク先として許可する。
+ * フィード由来の javascript:/data: やパース不能 URL は null を返し、
+ * 呼び出し側でリンク化せずテキスト表示させる(クリック時のスクリプト実行を防ぐ)。
+ */
+function safeHttpUrl(raw: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? raw : null;
+}
+
+/**
+ * YYYY-MM-DD が実在日かを UTC ラウンドトリップで検証する。
+ * 形式は通るが存在しない日(2026-02-31 / 2026-99-99 等)を DB 到達前に弾く。
+ */
+function isRealDate(date: string): boolean {
+  const m = DATE_RE.exec(date);
+  if (m === null) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return (
+    dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day
+  );
+}
+
 function layout(title: string, body: string): string {
   return `<!doctype html>
 <html lang="ja">
@@ -61,8 +92,13 @@ function articlesBody(
   const rows = articles
     .map((a) => {
       const feed = feedsById.get(a.feedId);
+      const href = safeHttpUrl(a.url);
+      const titleCell =
+        href === null
+          ? escapeHtml(a.title)
+          : `<a href="${escapeHtml(href)}" rel="noopener noreferrer">${escapeHtml(a.title)}</a>`;
       return `<tr>
-<td><a href="${escapeHtml(a.url)}" rel="noopener noreferrer">${escapeHtml(a.title)}</a><br>
+<td>${titleCell}<br>
 <span class="meta">${escapeHtml(feed?.name ?? a.feedId)}</span></td>
 <td class="meta">${fmt(a.publishedAt)}</td>
 </tr>`;
@@ -113,7 +149,7 @@ function sendHtml(res: ServerResponse, status: number, html: string): void {
   res.end(html);
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** GET /ui, /ui/feeds を処理。認証失敗時はブラウザの Basic 認証プロンプトを出す。 */
@@ -146,7 +182,7 @@ export async function handleUi(
     const q = url.searchParams.get('q')?.trim() ?? '';
     const date = url.searchParams.get('date')?.trim() ?? '';
     const feedId = url.searchParams.get('feed')?.trim() ?? '';
-    if (date !== '' && !DATE_RE.test(date)) {
+    if (date !== '' && !isRealDate(date)) {
       sendHtml(res, 400, layout('不正なリクエスト', '<h1>date は YYYY-MM-DD 形式で指定してください</h1>'));
       return;
     }

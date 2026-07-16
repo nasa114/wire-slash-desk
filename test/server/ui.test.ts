@@ -161,6 +161,141 @@ test('UI: /ui/feeds にフィード一覧とフラグが表示される', async 
   }
 });
 
+test('UI: 危険な URL スキームはリンク化せずテキスト表示(javascript:/data:/パース不能)', async () => {
+  const { repos, base, close } = await startApp({ uiPassword: UI_PASSWORD });
+  try {
+    const feed = await repos.feeds.create({
+      name: 'Evil',
+      feedUrl: 'https://evil.example.com/rss',
+    });
+    await repos.articles.upsertMany([
+      {
+        feedId: feed.id,
+        guid: 'js',
+        title: 'EvilJavascriptArticle',
+        url: 'javascript:alert(1)',
+        publishedAt: new Date('2026-07-15T10:00:00Z'),
+      },
+      {
+        feedId: feed.id,
+        guid: 'data',
+        title: 'EvilDataArticle',
+        url: 'data:text/html,<script>alert(2)</script>',
+        publishedAt: new Date('2026-07-15T09:00:00Z'),
+      },
+      {
+        feedId: feed.id,
+        guid: 'bad',
+        title: 'EvilUnparseableArticle',
+        url: 'not a valid url',
+        publishedAt: new Date('2026-07-15T08:00:00Z'),
+      },
+      {
+        feedId: feed.id,
+        guid: 'ok',
+        title: 'GoodHttpsArticle',
+        url: 'https://evil.example.com/ok',
+        publishedAt: new Date('2026-07-15T07:00:00Z'),
+      },
+    ]);
+    const html = await (await fetch(`${base}/ui`, { headers: basicAuth(UI_PASSWORD) })).text();
+    // 危険スキームは href に現れない
+    assert.ok(!html.includes('href="javascript:'), 'javascript: が href に現れてはならない');
+    assert.ok(!html.includes('javascript:alert(1)'), 'javascript: URL 文字列が出力されてはならない');
+    assert.ok(!html.includes('href="data:'), 'data: が href に現れてはならない');
+    assert.ok(!/href="not a valid url"/.test(html), 'パース不能 URL が href に現れてはならない');
+    // タイトルは表示される(リンクでなくてもテキストとして)
+    assert.match(html, /EvilJavascriptArticle/);
+    assert.match(html, /EvilDataArticle/);
+    assert.match(html, /EvilUnparseableArticle/);
+    // 正常な https はリンク化される
+    assert.match(html, /href="https:\/\/evil\.example\.com\/ok"/);
+  } finally {
+    await close();
+  }
+});
+
+test('UI: date は実在日のみ受理(2026-02-31 → 400, 2026-02-28 → 200)', async () => {
+  const { base, close } = await startApp({ uiPassword: UI_PASSWORD });
+  try {
+    const bad = await fetch(`${base}/ui?date=2026-02-31`, { headers: basicAuth(UI_PASSWORD) });
+    assert.equal(bad.status, 400);
+    const bad2 = await fetch(`${base}/ui?date=2026-99-99`, { headers: basicAuth(UI_PASSWORD) });
+    assert.equal(bad2.status, 400);
+    const ok = await fetch(`${base}/ui?date=2026-02-28`, { headers: basicAuth(UI_PASSWORD) });
+    assert.equal(ok.status, 200);
+  } finally {
+    await close();
+  }
+});
+
+test('UI: q+feed 併用は指定フィードの記事のみ表示(回帰)', async () => {
+  const { repos, base, close } = await startApp({ uiPassword: UI_PASSWORD });
+  try {
+    const feed1 = await repos.feeds.create({ name: 'Feed1', feedUrl: 'https://f1.example.com/rss' });
+    const feed2 = await repos.feeds.create({ name: 'Feed2', feedUrl: 'https://f2.example.com/rss' });
+    await repos.articles.upsertMany([
+      {
+        feedId: feed1.id,
+        guid: 'a',
+        title: 'Kubernetes on feed1',
+        url: 'https://f1.example.com/a',
+        publishedAt: new Date('2026-07-15T10:00:00Z'),
+      },
+      {
+        feedId: feed2.id,
+        guid: 'b',
+        title: 'Kubernetes on feed2',
+        url: 'https://f2.example.com/b',
+        publishedAt: new Date('2026-07-15T09:00:00Z'),
+      },
+    ]);
+    const html = await (
+      await fetch(`${base}/ui?q=kubernetes&feed=${feed1.id}`, { headers: basicAuth(UI_PASSWORD) })
+    ).text();
+    assert.match(html, /Kubernetes on feed1/);
+    assert.ok(!html.includes('Kubernetes on feed2'), 'feed1 指定時に feed2 の記事が出てはならない');
+  } finally {
+    await close();
+  }
+});
+
+test('UI: 属性を破るタイトル・クエリ再表示・不正 feed の防御(XSS拡充)', async () => {
+  const { repos, base, close } = await startApp({ uiPassword: UI_PASSWORD });
+  try {
+    const feed = await repos.feeds.create({
+      name: 'AttrFeed',
+      feedUrl: 'https://attr.example.com/rss',
+    });
+    await repos.articles.upsertMany([
+      {
+        feedId: feed.id,
+        guid: 'attr',
+        title: `break"'><&marker`,
+        url: 'https://attr.example.com/x',
+        publishedAt: new Date('2026-07-15T10:00:00Z'),
+      },
+    ]);
+    // 属性を破る文字を含むタイトルがエスケープされる
+    const html = await (await fetch(`${base}/ui`, { headers: basicAuth(UI_PASSWORD) })).text();
+    assert.ok(!html.includes(`break"'><&marker`), '生の危険文字列が出力されてはならない');
+    assert.match(html, /break&quot;&#39;&gt;&lt;&amp;marker/);
+    // クエリ再表示のエスケープ(value 属性を破らない)
+    const qHtml = await (
+      await fetch(`${base}/ui?q=${encodeURIComponent('"><script>')}`, {
+        headers: basicAuth(UI_PASSWORD),
+      })
+    ).text();
+    assert.ok(!qHtml.includes('"><script>'), 'クエリの生 script が value を破ってはならない');
+    assert.match(qHtml, /value="&quot;&gt;&lt;script&gt;"/);
+    // 不正 UUID の feed は 400
+    const bad = await fetch(`${base}/ui?feed=not-a-uuid`, { headers: basicAuth(UI_PASSWORD) });
+    assert.equal(bad.status, 400);
+  } finally {
+    await close();
+  }
+});
+
 test('UI: MCP と collect の認証は UI パスワードでは通らない(系統分離)', async () => {
   const { base, close } = await startApp({ uiPassword: UI_PASSWORD });
   try {
