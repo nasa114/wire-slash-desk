@@ -127,7 +127,7 @@ export function createMcpServer(deps: McpServerDeps): McpServer {
       },
     },
     async ({ query, limit }) => {
-      const articles = await deps.repos.articles.searchByTitle(query, limit);
+      const articles = await deps.repos.articles.searchByTitle(query, { limit });
       return textResult(articles.map(articleView));
     },
   );

@@ -137,6 +137,27 @@ export function runArticleRepositoryContract(impl: string, makeRepos: MakeRepos)
     }
   });
 
+  test(t('searchByTitle: feedId オプションでフィード内に絞り込める'), async () => {
+    const repos = await makeRepos();
+    try {
+      const f1 = await seedFeed(repos, 'https://sf1.example.com/rss');
+      const f2 = await seedFeed(repos, 'https://sf2.example.com/rss');
+      await repos.articles.upsertMany([
+        { feedId: f1.id, guid: 'g1', title: 'release notes v1', url: 'https://sf1/1' },
+        { feedId: f2.id, guid: 'g2', title: 'release notes v2', url: 'https://sf2/1' },
+      ]);
+      const all = await repos.articles.searchByTitle('release');
+      assert.equal(all.length, 2);
+      const onlyF1 = await repos.articles.searchByTitle('release', { feedId: f1.id });
+      assert.equal(onlyF1.length, 1);
+      assert.equal(onlyF1[0]?.guid, 'g1');
+      const limited = await repos.articles.searchByTitle('release', { feedId: f2.id, limit: 1 });
+      assert.equal(limited[0]?.guid, 'g2');
+    } finally {
+      await repos.close();
+    }
+  });
+
   test(t('listByDate: UTC 日付で publishedAt を照合する'), async () => {
     const repos = await makeRepos();
     try {

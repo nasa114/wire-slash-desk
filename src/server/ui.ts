@@ -157,7 +157,10 @@ export async function handleUi(
 
     let articles: Article[];
     if (q !== '') {
-      articles = await deps.repos.articles.searchByTitle(q, 200);
+      articles = await deps.repos.articles.searchByTitle(
+        q,
+        feedId !== '' ? { limit: 200, feedId } : { limit: 200 },
+      );
     } else if (date !== '') {
       articles = await deps.repos.articles.listByDate(date);
     } else {

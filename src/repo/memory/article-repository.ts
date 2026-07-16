@@ -3,6 +3,7 @@ import type { Article, NewArticle } from '../../domain/types.ts';
 import type {
   ArticleRepository,
   ListRecentOptions,
+  SearchOptions,
   UpsertResult,
 } from '../../domain/repositories.ts';
 import { NotFoundError } from '../../domain/errors.ts';
@@ -81,12 +82,16 @@ export class MemoryArticleRepository implements ArticleRepository {
       .map((a) => ({ ...a }));
   }
 
-  async searchByTitle(query: string, limit?: number): Promise<Article[]> {
+  async searchByTitle(query: string, options: SearchOptions = {}): Promise<Article[]> {
     const q = query.toLowerCase();
     return [...this.store.articles.values()]
-      .filter((a) => a.title.toLowerCase().includes(q))
+      .filter(
+        (a) =>
+          (options.feedId === undefined || a.feedId === options.feedId) &&
+          a.title.toLowerCase().includes(q),
+      )
       .sort(byRecency)
-      .slice(0, clampLimit(limit))
+      .slice(0, clampLimit(options.limit))
       .map((a) => ({ ...a }));
   }
 

@@ -32,12 +32,19 @@ export interface UpsertResult {
   skipped: number;
 }
 
+export interface SearchOptions {
+  /** 既定 50、上限 200(listRecent と同じクランプ)。 */
+  limit?: number;
+  /** 指定時はそのフィード内のみ検索。 */
+  feedId?: string;
+}
+
 export interface ArticleRepository {
   /** (feedId, guid) 重複は上書きせずスキップ(設計書 §5-4)。未知の feedId は NotFoundError。 */
   upsertMany(items: NewArticle[]): Promise<UpsertResult>;
   getById(id: string): Promise<Article | null>;
   listRecent(options?: ListRecentOptions): Promise<Article[]>;
-  searchByTitle(query: string, limit?: number): Promise<Article[]>;
+  searchByTitle(query: string, options?: SearchOptions): Promise<Article[]>;
   /** date は 'YYYY-MM-DD'(UTC 日付で publishedAt を照合)。 */
   listByDate(date: string): Promise<Article[]>;
   /** fulltext_allowed ソースの明示操作でのみ呼ぶこと。存在しない id は NotFoundError。 */

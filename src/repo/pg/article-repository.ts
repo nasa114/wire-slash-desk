@@ -3,6 +3,7 @@ import type { Article, NewArticle } from '../../domain/types.ts';
 import type {
   ArticleRepository,
   ListRecentOptions,
+  SearchOptions,
   UpsertResult,
 } from '../../domain/repositories.ts';
 import { NotFoundError } from '../../domain/errors.ts';
@@ -103,14 +104,21 @@ export class PgArticleRepository implements ArticleRepository {
     return result.rows.map(mapArticleRow);
   }
 
-  async searchByTitle(query: string, limit?: number): Promise<Article[]> {
+  async searchByTitle(query: string, options: SearchOptions = {}): Promise<Article[]> {
     const pattern = `%${escapeLikePattern(query)}%`;
+    const values: unknown[] = [pattern];
+    let feedCondition = '';
+    if (options.feedId !== undefined) {
+      values.push(options.feedId);
+      feedCondition = `and feed_id = $${values.length}`;
+    }
+    values.push(clampLimit(options.limit));
     const result = await this.pool.query<ArticleRow>(
       `select * from articles
-       where title ilike $1
+       where title ilike $1 ${feedCondition}
        order by published_at desc nulls last, fetched_at desc
-       limit $2`,
-      [pattern, clampLimit(limit)],
+       limit $${values.length}`,
+      values,
     );
     return result.rows.map(mapArticleRow);
   }
