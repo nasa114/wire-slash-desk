@@ -1,0 +1,100 @@
+services:
+  # Update this to the name of the service you want to work with in your docker-compose.yml file
+  app:
+    # Uncomment if you want to override the service's Dockerfile to one in the .devcontainer
+    # folder. Note that the path of the Dockerfile and context is relative to the *primary*
+    # docker-compose.yml file (the first in the devcontainer.json "dockerComposeFile"
+    # array). The sample below assumes your primary file is in the root of your project.
+    #
+    image: mcr.microsoft.com/devcontainers/typescript-node:4.0.10-24-bullseye@sha256:4823a29f22ee44441f6092c8b161383eae5e902059fec420e4836ea3ab3a2525
+    networks:
+      - internal  # 内部ネットワーク（db、squidとの通信用）
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      # PostgreSQL 接続情報（同一ネットワーク内のホスト名 db で接続）
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-app}
+      - POSTGRES_USER=${POSTGRES_USER:-app}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-app}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
+      # プロキシ設定
+      - HTTP_PROXY=http://squid:3128
+      - HTTPS_PROXY=http://squid:3128
+      - http_proxy=http://squid:3128
+      - https_proxy=http://squid:3128
+      - NO_PROXY=localhost,127.0.0.1,db,squid,*.local
+      - no_proxy=localhost,127.0.0.1,db,squid,*.local
+    volumes:
+      # Update this to wherever you want VS Code to mount the folder of your project
+      - ..:/workspaces:cached
+      # エージェントのホームディレクトリを named volume で永続化（コンテナ再作成後も保持）
+      - cc-userdata:/home/node/.claude
+      - codex-userdata:/home/node/.codex
+
+    # Uncomment the next four lines if you will use a ptrace-based debugger like C++, Go, and Rust.
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - seccomp:unconfined
+
+    # Overrides default command so things don't shut down after the process ends.
+    command: sleep infinity
+
+  db:
+    # pgvector 拡張入り PostgreSQL 17（docs/003_AgentTasks.md T0-1 の指定イメージ）
+    image: pgvector/pgvector:pg17
+    networks:
+      - internal  # 内部ネットワークのみ。ポート開放はせず同一ネットワーク内通信のみ許可
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-app}
+      - POSTGRES_USER=${POSTGRES_USER:-app}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-app}
+    volumes:
+      # MySQL 時代の db-data volume と衝突しないよう pg-data に分離
+      - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      # $$ でエスケープし、compose 側でなくコンテナ内シェルで環境変数を解決する
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-app} -d $${POSTGRES_DB:-app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  squid:
+    image: ubuntu/squid:latest
+    networks:
+      - internal  # 内部ネットワークからの接続を受け付ける
+      - proxy     # インターネットへの接続を許可
+    volumes:
+      - ./squid/squid.conf:/etc/squid/squid.conf:ro
+      - ./squid/allowed-domains.txt:/etc/squid/allowed-domains.txt:ro
+      - squid-cache:/var/spool/squid
+      - squid-logs:/var/log/squid
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "squid -k check || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  # 内部ネットワーク（インターネット接続遮断）
+  internal:
+    driver: bridge
+    internal: true  # インターネットへの接続を完全に遮断
+
+  # プロキシネットワーク（インターネット接続許可）
+  proxy:
+    driver: bridge  # 外部接続を許可（Squidプロキシ経由）
+volumes:
+  squid-cache:
+  squid-logs:
+  cc-userdata:
+  codex-userdata:
+  pg-data:

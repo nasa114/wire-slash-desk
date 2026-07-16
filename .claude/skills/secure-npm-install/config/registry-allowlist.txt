@@ -1,0 +1,38 @@
+# Allowed npm registry origins (one per line).
+# Skill: secure-npm-install
+#
+# Matching: exact scheme + host (+ port) match, then optional path prefix.
+# A bare URL like `https://registry.npmjs.org/` allows ALL paths under that host.
+# To restrict scopes to specific registries, use the `@scope <url>` line form.
+#
+# WHY a configurable allowlist (not hardcoded registry.npmjs.org):
+#   Trust-layer proxies — Verdaccio, GitHub Packages, JFrog Curation,
+#   Sonatype Nexus Firewall, Socket Registry, Cloudsmith, Snyk Broker,
+#   Takumi Guard etc. — all rewrite tarball URLs. Hardcoding would either
+#   break behind these proxies or force them to be turned off (which is
+#   the opposite of what we want).
+#
+# WHY exact host match (not prefix on the whole URL):
+#   `https://registry.npmjs.org/` as a string prefix accidentally allows
+#   `https://registry.npmjs.org.evil.com/...`. The skill parses URL and
+#   compares scheme+host (and port if present) exactly.
+#
+# Scoped registries (@scope <url>) MUST also be declared in `.npmrc` as
+#   @scope:registry=<url>
+# so npm itself routes scope traffic correctly. The skill verifies this.
+#
+# Comment lines start with `#`. Blank lines ignored.
+
+# ---- default: public npm registry ----
+https://registry.npmjs.org/
+
+# ---- examples (uncomment + edit for your org) ----
+# https://npm.pkg.github.com/
+# https://<org>.jfrog.io/artifactory/api/npm/<repo>/
+# https://<org>-npm.repo.sonatype.com/
+# https://npm.cloudsmith.io/<org>/<repo>/
+# https://registry.socket.dev/
+
+# ---- scope-pinned (illustrative) ----
+# @acme    https://npm.pkg.github.com/
+# @internal https://<org>.jfrog.io/artifactory/api/npm/internal/

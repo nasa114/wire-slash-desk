@@ -1,0 +1,36 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see
+// https://containers.dev/. Base image (typescript-node:*-24-*) は Node 24 を同梱する。
+{
+	"name": "RSS Reader",
+	"dockerComposeFile": [
+		"compose.yml"
+	],
+	"service": "app",
+	"workspaceFolder": "/workspaces",
+
+	// Node はベースイメージ（typescript-node, Node 24）に同梱のため feature では入れない。
+	// Hugo 等の未使用 feature は削除済み。
+
+	// Configure tool-specific properties.
+	"customizations": {
+		// Configure properties specific to VS Code.
+		"vscode": {
+			// Add the IDs of extensions you want installed when the container is created.
+			"extensions": [
+				"Anthropic.claude-code"
+			]
+		}
+	},
+	"features": {
+		"ghcr.io/anthropics/devcontainer-features/claude-code:1.0.5": {}
+	},
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	// named volume は初回作成時 root 所有になるため、エージェントの書き込み先を node に付け替える。
+	"postCreateCommand": "sudo chown node:node -R /home/node/.claude /home/node/.codex"
+
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}

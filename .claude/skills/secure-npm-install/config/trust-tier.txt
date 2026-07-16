@@ -1,0 +1,42 @@
+# Trust-tier package list — fast path for L1 pre-install research.
+# Skill: secure-npm-install
+#
+# Matching:
+#   - Exact name match (e.g. `drizzle-orm`)
+#   - Scope wildcard (e.g. `@hono/*` matches all @hono packages)
+#   - Optional version pin with `@<semver>` to restrict the fast path
+#
+# Effect when a package matches:
+#   - L1.2 (typosquat / dep confusion) is SKIPPED
+#   - L1.4 (source tarball inspection) is SKIPPED
+#   - L1.1 (metadata), L1.3 (CVE/OSV), L1.5 (lifecycle scripts),
+#     L2 (lockfile diff), L3 (post-install static + PI scan) are ALWAYS run
+#
+# Criteria for adding a package here (all required):
+#   1. published with sigstore provenance (`dist.attestations`)
+#   2. > 6 months old, > 1M weekly downloads OR core ecosystem package
+#   3. maintainer count >= 2 OR institution-backed (Vercel/Cloudflare/etc.)
+#   4. PR review with at least one approving reviewer
+#
+# DO NOT add a package here as a way to silence inspect.sh false positives.
+# Fix the regex or add a per-package allowlist instead.
+#
+# Comment lines start with `#`. Blank lines ignored.
+
+# ---- starter list (empty by default — add via PR review) ----
+# @hono/*
+# hono
+# drizzle-orm
+# @playwright/test
+# tailwindcss
+# pino
+
+# ---- CC-ManagedSettings: React + Vite stack (added 2026-06-07) ----
+# Criteria met: provenance, >2yr, >1M weekly DL, institution-backed
+typescript
+react
+react-dom
+@types/react
+@types/react-dom
+vite
+@vitejs/plugin-react

@@ -1,0 +1,3 @@
+# pnpm 10+: ビルドスクリプトはホワイトリスト制(onlyBuiltDependencies)。
+# 本プロジェクトの依存はネイティブビルド不要のため空。追加はレビュー必須。
+onlyBuiltDependencies: []

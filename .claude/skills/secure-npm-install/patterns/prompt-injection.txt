@@ -1,0 +1,76 @@
+# Prompt-injection pattern catalog for secure-npm-install
+#
+# Format (TAB separated):
+#   <tag>\t<extended-regex>
+#
+# Tag categories:
+#   en      English jailbreak / instruction override
+#   ja      Japanese jailbreak / instruction override
+#   zh      Chinese (Simplified) jailbreak
+#   ko      Korean jailbreak
+#   tok     LLM control tokens / role markers
+#   agent   Agent-targeted vocabulary (Claude/Cursor/Copilot/etc.)
+#   meta    Indirect / structural cues
+#
+# Regex flavor: POSIX extended (grep -E). All patterns case-insensitive at scan time.
+# Patterns hit on README, source, package.json description, sourcemaps, SVG metadata, etc.
+# Last reviewed: 2026-05
+
+# ---- English ----
+en	ignore (all |previous |above |prior )?(instructions?|prompts?|rules?|context|messages?)
+en	disregard (previous|prior|all|the above) (instructions?|context|prompt)
+en	you are (now |a )?(new |different |unrestricted )?(system|admin|root|god|sudo)
+en	act as (a |an )?(unrestricted|jailbroken|developer mode|root|admin|system)
+en	pretend (to be|you are|that you)
+en	(initial|system) prompt
+en	jailbreak|DAN mode|developer mode enabled
+en	override (your|the) (instructions?|guardrails?|safety)
+en	you must (now |always )?(comply|obey|execute|run)
+en	do not (refuse|decline|warn|ask)
+en	without (any )?(restrictions?|safety|filter|warning)
+
+# ---- Japanese ----
+ja	(以前|今までの|これまでの|上記の|先ほどの)(指示|タスク|プロンプト|ルール|命令).{0,15}(無視|忘れ|破棄|放棄)
+ja	私は(神|管理者|開発者|システム)
+ja	あなたは(今|これから|もう)(神|管理者|開発者|新しい|別の)
+ja	システム(プロンプト|指示).{0,15}(無視|変更|上書き|削除)
+ja	安全(機能|チェック).{0,15}(無効|解除|スキップ)
+ja	(警告|確認|質問).{0,10}せずに
+ja	制限(なし|を解除|を無視)
+ja	(脱獄|ジェイルブレイク|開発者モード)
+
+# ---- Chinese (Simplified) ----
+zh	忽略(以上|之前|前面|所有|先前)(的)?(指令|指示|提示|规则|命令)
+zh	忘记(之前|你|所有)(的)?(指令|指示|提示)
+zh	你(现在|从现在起)(是|扮演)(管理员|开发者|系统|新)
+zh	跳过(安全|检查|审核)
+zh	没有(任何)?限制
+
+# ---- Korean ----
+ko	(이전|위의|모든) (지시|명령|규칙)(을|를) ?(무시|잊)
+ko	(너|당신)(는|은) 이제 (새로운|다른|관리자|개발자)
+ko	(보안|안전) (검사|확인)(을|를)? ?(건너|무시)
+
+# ---- LLM control tokens / role markers ----
+tok	<\|im_start\|>|<\|im_end\|>|<\|endoftext\|>|<\|system\|>|<\|assistant\|>|<\|user\|>
+tok	<\|fim_(prefix|middle|suffix)\|>|<\|file_separator\|>
+tok	\[INST\]|\[/INST\]|<<SYS>>|<</SYS>>
+tok	<system>|</system>|<assistant>|</assistant>
+tok	###\s*(System|Assistant|Instruction)\s*:
+
+# ---- Agent-targeted vocabulary ----
+agent	(claude|cursor|copilot|chatgpt|gemini|anthropic|openai)[[:space:]]+(code|cli|agent|sdk)
+# function_calls? requires word boundary (\b) to avoid matching TypeScript error names like
+#   "Cannot_start_a_function_call_in_a_type_annotation".
+# <invoke/<parameter require space or > after to avoid matching TypeScript generics
+#   like <InvokeMethods[T]> or <ParameterDeclaration>.
+# NOTE: this pattern requires PCRE (-P flag) for \b and (?=...).
+agent	(tool_use|\bfunction_calls?\b|<invoke(?=[\s>\/])|<parameter(?=[\s>\/])|<tool_call)
+agent	skip (the |this )?(security|skill|check|review|audit|verification)
+agent	bypass (the )?(skill|hook|guardrail|check)
+agent	this (package|library) is (trusted|safe|approved|verified|signed by)
+agent	you (can|may|should) (trust|approve) (this|me) without
+
+# ---- Meta / structural ----
+meta	^(system|assistant|user)[[:space:]]*:.{20,}
+meta	pwned|p0wned
