@@ -1,0 +1,66 @@
+name: CI
+
+# lint + unit/contract/integration テスト + migration up/down を PR とデフォルトブランチで実行する。
+# セキュリティ回帰(SSRF ガード・ログイン総当たり対策・本文非保存の不変条件など)は
+# test/ 配下のテストで固定されており、この CI がそれらを常時ゲートする(再発防止)。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 供給網対策(CLAUDE.md): frozen-lockfile + postinstall 無効(--ignore-scripts)。
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: rss
+          POSTGRES_PASSWORD: rss
+          POSTGRES_DB: rss
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rss -d rss"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # migration とアプリ既定 DB。
+      DATABASE_URL: postgres://rss:rss@localhost:5432/rss
+      # 統合/契約テスト用 DB(安全弁: 名前は必ず _test で終わる)。
+      TEST_DATABASE_URL: postgres://rss:rss@localhost:5432/rss_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable corepack (pnpm@11.7.0)
+        run: corepack enable
+
+      - name: Install dependencies (frozen, no lifecycle scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Create isolated test database
+        # 既に導入済みの pg 依存で作成する(psql の有無に依存しない)。
+        run: >-
+          node -e "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:'postgres://rss:rss@localhost:5432/rss'});await c.connect();await c.query('create database rss_test');await c.end();})().catch(e=>{console.error(e.message);process.exit(1)})"
+
+      - name: Lint (tsc --noEmit)
+        run: pnpm run lint
+
+      - name: Migrate up
+        run: pnpm run migrate
+
+      - name: Test (unit + contract + integration)
+        run: pnpm test
+
+      - name: Migrate down (rollback check)
+        run: pnpm run migrate:down
