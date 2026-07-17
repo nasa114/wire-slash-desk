@@ -10,7 +10,9 @@ import { secureHeaders } from 'hono/secure-headers';
 import type { Repositories } from '../domain/repositories.ts';
 import type { Article, NewFeed, User } from '../domain/types.ts';
 import { DuplicateFeedUrlError, DuplicateUsernameError, NotFoundError } from '../domain/errors.ts';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.ts';
+import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
 import {
   articlesBody,
@@ -40,6 +42,10 @@ export interface WebDeps {
   /** Set-Cookie に Secure を付けるか(TLS 終端配下では true にする)。 */
   cookieSecure: boolean;
   now?: () => Date;
+  /** ログイン総当たり対策。既定は既定パラメータの LoginThrottle(now を共有)。テストで注入可。 */
+  loginThrottle?: LoginThrottle;
+  /** 送信元 IP の取得(既定は TCP 接続元。X-Forwarded-For は既定で信頼しない)。テストで注入可。 */
+  clientIp?: (c: Context<WebEnv>) => string;
 }
 
 type WebEnv = { Variables: { user: User } };
@@ -196,6 +202,27 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
   const now = deps.now ?? (() => new Date());
   const app = new Hono<WebEnv>();
 
+  // ログイン総当たり対策(設計書 §7 / KnownLimitations §7)。now を共有して
+  // テストの決定的クロックに追従させる。
+  const loginThrottle = deps.loginThrottle ?? new LoginThrottle({ now: () => now().getTime() });
+  const clientIp =
+    deps.clientIp ??
+    ((c: Context<WebEnv>): string => {
+      // 送信元 IP は TCP 接続元のみを使う。X-Forwarded-For はスプーフ可能なため
+      // 既定で信頼しない(信頼できるリバースプロキシ配下ではそちらでの制限を推奨)。
+      try {
+        return getConnInfo(c).remote.address ?? 'unknown';
+      } catch {
+        return 'unknown';
+      }
+    });
+  /** ログイン絞りのキー: 正規化ユーザー名(あれば)+ 送信元 IP。 */
+  const throttleKeys = (c: Context<WebEnv>, username: string): string[] => {
+    const keys = [`ip:${clientIp(c)}`];
+    if (username !== '') keys.push(`u:${username.toLowerCase()}`);
+    return keys;
+  };
+
   const html = (c: Context, body: string, status = 200): Response => {
     c.header('cache-control', 'no-store');
     return c.html(body, status as 200);
@@ -340,6 +367,23 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     const body = await c.req.parseBody();
     const username = formStr(body, 'username');
     const password = typeof body['password'] === 'string' ? body['password'] : '';
+    const keys = throttleKeys(c, username);
+
+    // 総当たり対策: 閾値到達なら scrypt 検証すら行わず 429 を返す
+    // (辞書攻撃の抑制と、scrypt による CPU/worker pool 枯渇 DoS の緩和を兼ねる)。
+    const decision = loginThrottle.check(keys);
+    if (decision.limited) {
+      c.header('Retry-After', String(decision.retryAfterSec));
+      return html(
+        c,
+        authLayout(
+          'ログイン — Wire Desk',
+          loginBody({ error: '試行回数が多すぎます。しばらく時間をおいて再度お試しください。' }),
+          { login: true },
+        ),
+        429,
+      );
+    }
 
     const user = username !== '' ? await deps.repos.users.getByUsername(username) : null;
     // ユーザー不在でもダミーハッシュを検証し、応答時間からの存在推測を防ぐ。
@@ -350,6 +394,7 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       user !== null;
 
     if (!ok) {
+      loginThrottle.recordFailure(keys);
       // 文言はユーザー名/パスワードのどちらが誤りかを判別できないものに固定する(列挙対策)。
       return html(
         c,
@@ -361,6 +406,9 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
         401,
       );
     }
+
+    // 認証成功: このキーの失敗履歴を解除する。
+    loginThrottle.reset(keys);
 
     // ついでに期限切れセッションを掃除(専用バッチを持たない運用)。
     await deps.repos.sessions.deleteExpired(now());
