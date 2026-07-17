@@ -26,13 +26,20 @@ async function loadRepositories(databaseUrl: string): Promise<Repositories> {
 async function loadRunCollect(
   repos: Repositories,
   userAgent: string,
+  trustEgressProxy: boolean,
 ): Promise<() => Promise<unknown>> {
   try {
     const mod = (await import('./collector/collector.ts')) as Record<string, unknown>;
     const collect = mod['collectDueFeeds'];
     if (typeof collect === 'function') {
-      const fn = collect as (options: { repos: Repositories; userAgent?: string }) => Promise<unknown>;
-      return () => fn({ repos, userAgent });
+      const fn = collect as (options: {
+        repos: Repositories;
+        userAgent?: string;
+        trustEgressProxy?: boolean;
+      }) => Promise<unknown>;
+      // SSRF ガードは collector 経路にも適用する(設計書 §6)。トラフィックの
+      // egress モードは config と一致させる(直接エグレスなら DNS 検査あり)。
+      return () => fn({ repos, userAgent, trustEgressProxy });
     }
   } catch {
     // collector 未実装時は起動は許容し、収集は無効化する。
@@ -60,7 +67,7 @@ async function main(): Promise<void> {
 
   const userAgent = buildUserAgent(config.collectorContact);
   const repos = await loadRepositories(config.databaseUrl as string);
-  const runCollect = await loadRunCollect(repos, userAgent);
+  const runCollect = await loadRunCollect(repos, userAgent, config.trustEgressProxy);
 
   const app: Server = createApp({
     repos,

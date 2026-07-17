@@ -4,10 +4,15 @@ import { createHash } from 'node:crypto';
 import { collectDueFeeds } from '../../src/collector/collector.ts';
 import { createMemoryRepositories } from '../../src/repo/memory/index.ts';
 import { createFakeFetch } from './fake-fetch.ts';
-import { RSS_FIXTURE, ATOM_FIXTURE, xmlResponse, seedFeed } from './helpers.ts';
+import { RSS_FIXTURE, ATOM_FIXTURE, xmlResponse, seedFeed, publicLookup } from './helpers.ts';
 
 function sha256Hex(input: string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+/** collector を呼ぶ既存テスト用ラッパー。ネットワーク非依存の lookup を既定注入する。 */
+function collect(opts: Parameters<typeof collectDueFeeds>[0]): ReturnType<typeof collectDueFeeds> {
+  return collectDueFeeds({ lookupFn: publicLookup, ...opts });
 }
 
 test('不変条件: 本文入りRSSを収集しても articles.content は常に null', async () => {
@@ -15,7 +20,7 @@ test('不変条件: 本文入りRSSを収集しても articles.content は常に
   await seedFeed(repos);
   const fetchFn = createFakeFetch(() => xmlResponse(RSS_FIXTURE));
 
-  const result = await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  const result = await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   assert.equal(result.feeds[0]?.status, 'ok');
   assert.equal(result.totalInserted, 2); // 3件中1件は link 無しでスキップ
@@ -32,7 +37,7 @@ test('不変条件: Atomフィードでも articles.content は常に null', asy
   await seedFeed(repos, { feedUrl: 'https://example.com/atom.xml' });
   const fetchFn = createFakeFetch(() => xmlResponse(ATOM_FIXTURE));
 
-  const result = await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  const result = await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   assert.equal(result.feeds[0]?.status, 'ok');
   assert.equal(result.totalInserted, 2);
@@ -49,7 +54,7 @@ test('title/url/publishedAt/guid が正しくマップされる', async () => {
   await seedFeed(repos);
   const fetchFn = createFakeFetch(() => xmlResponse(RSS_FIXTURE));
 
-  await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   const articles = await repos.articles.listRecent();
   const first = articles.find((a) => a.guid === 'post-1-guid');
@@ -65,7 +70,7 @@ test('guid 欠落アイテムは sha256(url) の hex が guid になる', async 
   await seedFeed(repos);
   const fetchFn = createFakeFetch(() => xmlResponse(RSS_FIXTURE));
 
-  await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   const articles = await repos.articles.listRecent();
   const expectedGuid = sha256Hex('https://example.com/posts/2');
@@ -79,7 +84,7 @@ test('link の無いアイテムはスキップされる', async () => {
   await seedFeed(repos);
   const fetchFn = createFakeFetch(() => xmlResponse(RSS_FIXTURE));
 
-  await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   const articles = await repos.articles.listRecent();
   assert.equal(
@@ -106,7 +111,7 @@ test('2回目の実行で etag が If-None-Match として送信され、304 応
     return new Response(null, { status: 304 });
   });
 
-  const first = await collectDueFeeds({ repos, fetchFn, now: () => current });
+  const first = await collect({ repos, fetchFn, now: () => current });
   assert.equal(first.feeds[0]?.status, 'ok');
   assert.equal(first.totalInserted, 2);
 
@@ -115,7 +120,7 @@ test('2回目の実行で etag が If-None-Match として送信され、304 応
 
   // 15分インターバルなので due にするために時刻を進める
   current = new Date(current.getTime() + 16 * 60_000);
-  const second = await collectDueFeeds({ repos, fetchFn, now: () => current });
+  const second = await collect({ repos, fetchFn, now: () => current });
 
   assert.equal(fetchFn.calls.length, 2);
   assert.equal(fetchFn.calls[1]?.headers['If-None-Match'], 'W/"v1"');
@@ -138,12 +143,12 @@ test('同一フィードを再収集すると重複記事は skipped になる',
   let current = new Date('2026-07-16T00:00:00Z');
   const fetchFn = createFakeFetch(() => xmlResponse(RSS_FIXTURE));
 
-  const first = await collectDueFeeds({ repos, fetchFn, now: () => current });
+  const first = await collect({ repos, fetchFn, now: () => current });
   assert.equal(first.totalInserted, 2);
   assert.equal(first.totalSkipped, 0);
 
   current = new Date(current.getTime() + 16 * 60_000);
-  const second = await collectDueFeeds({ repos, fetchFn, now: () => current });
+  const second = await collect({ repos, fetchFn, now: () => current });
 
   assert.equal(second.feeds[0]?.status, 'ok');
   assert.equal(second.totalInserted, 0);
@@ -168,7 +173,7 @@ test('1フィードが 500 応答でも他フィードは収集される(status=
     throw new Error(`unexpected url: ${url}`);
   });
 
-  const result = await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  const result = await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   const badResult = result.feeds.find((f) => f.feedId === badFeed.id);
   const goodResult = result.feeds.find((f) => f.feedId === goodFeed.id);
@@ -194,7 +199,7 @@ test('例外(タイムアウト等)を投げるフィードも他フィードの
     return xmlResponse(RSS_FIXTURE);
   });
 
-  const result = await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  const result = await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   const throwingResult = result.feeds.find((f) => f.feedId === throwingFeed.id);
   const goodResult = result.feeds.find((f) => f.feedId === goodFeed.id);
@@ -217,7 +222,7 @@ test('due でないフィード(直近取得済み・disabled)は fetch され�
 
   const fetchFn = createFakeFetch(() => xmlResponse(RSS_FIXTURE));
 
-  const result = await collectDueFeeds({ repos, fetchFn, now: () => now });
+  const result = await collect({ repos, fetchFn, now: () => now });
 
   assert.equal(result.feeds.length, 1);
   assert.equal(result.feeds[0]?.feedId, due.id);
@@ -230,7 +235,7 @@ test('Atomフィード: <id> がそのまま guid として採用される(item.
   await seedFeed(repos, { feedUrl: 'https://example.com/atom.xml' });
   const fetchFn = createFakeFetch(() => xmlResponse(ATOM_FIXTURE));
 
-  await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   const articles = await repos.articles.listRecent();
 
@@ -266,7 +271,7 @@ test('タイムアウト: timeoutMs 超過で fetch に渡された signal が a
     return xmlResponse(RSS_FIXTURE);
   });
 
-  const result = await collectDueFeeds({
+  const result = await collect({
     repos,
     fetchFn,
     now: () => new Date('2026-07-16T00:00:00Z'),
@@ -290,7 +295,7 @@ test('User-Agent が既定値で送信される', async () => {
   await seedFeed(repos);
   const fetchFn = createFakeFetch(() => xmlResponse(RSS_FIXTURE));
 
-  await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   assert.equal(
     fetchFn.calls[0]?.headers['User-Agent'],

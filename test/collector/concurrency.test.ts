@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { collectDueFeeds } from '../../src/collector/collector.ts';
 import { createMemoryRepositories } from '../../src/repo/memory/index.ts';
 import { createFakeFetch } from './fake-fetch.ts';
-import { RSS_FIXTURE, xmlResponse, seedFeed } from './helpers.ts';
+import { RSS_FIXTURE, xmlResponse, seedFeed, publicLookup } from './helpers.ts';
+
+/** ネットワーク非依存の lookup を既定注入する collector 呼び出しラッパー。 */
+function collect(opts: Parameters<typeof collectDueFeeds>[0]): ReturnType<typeof collectDueFeeds> {
+  return collectDueFeeds({ lookupFn: publicLookup, ...opts });
+}
 
 test('同時実行数が concurrency オプションを超えない', async () => {
   const repos = createMemoryRepositories();
@@ -24,7 +29,7 @@ test('同時実行数が concurrency オプションを超えない', async () =
     return xmlResponse(RSS_FIXTURE);
   });
 
-  const result = await collectDueFeeds({
+  const result = await collect({
     repos,
     fetchFn,
     now: () => new Date('2026-07-16T00:00:00Z'),
@@ -55,7 +60,7 @@ test('既定の concurrency は 4', async () => {
     return xmlResponse(RSS_FIXTURE);
   });
 
-  await collectDueFeeds({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
+  await collect({ repos, fetchFn, now: () => new Date('2026-07-16T00:00:00Z') });
 
   assert.ok(maxInFlight <= 4, `observed max in-flight ${maxInFlight} must be <= 4`);
   assert.equal(maxInFlight, 4);
