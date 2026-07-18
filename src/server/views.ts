@@ -403,8 +403,8 @@ export function layout(title: string, ctx: PageContext, body: string): string {
 <header class="masthead">
   <div class="masthead-row">
     <h1 class="brand">Wire<span class="tick"> /</span> Desk</h1>
-    <span class="masthead-date">${jaDateJst(ctx.now)}</span>
-    <span class="masthead-meta">PERSONAL RSS READER · ${hhmmJst(ctx.now)} JST</span>
+    <span class="masthead-date" data-clock="date">${jaDateJst(ctx.now)}</span>
+    <span class="masthead-meta">PERSONAL RSS READER · <span data-clock="time" data-epoch="${ctx.now.getTime()}">${hhmmJst(ctx.now)}</span> JST</span>
   </div>
   <div class="toolbar">
     <nav class="nav" aria-label="ページ">
@@ -428,6 +428,7 @@ ${body}
   <span>時刻はすべて日本時間(JST)</span>
 </footer>
 </div>`,
+    '\n<script src="/assets/clock.js" defer></script>',
   );
 }
 

@@ -60,7 +60,7 @@ function loadHtmxSource(): string {
   return htmxSource;
 }
 
-/** src/server/assets/ の静的ファイル(ログイン画面の背景SVG・アラートJS)。 */
+/** src/server/assets/ の静的ファイル(ログイン画面の背景SVG・アラートJS・時計JS)。 */
 const assetCache = new Map<string, string>();
 function loadAsset(name: string): string {
   let content = assetCache.get(name);
@@ -305,6 +305,12 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     c.header('cache-control', 'public, max-age=86400');
     c.header('content-type', 'text/javascript; charset=utf-8');
     return c.body(loadHtmxSource());
+  });
+
+  app.get('/assets/clock.js', (c) => {
+    c.header('cache-control', 'public, max-age=86400');
+    c.header('content-type', 'text/javascript; charset=utf-8');
+    return c.body(loadAsset('clock.js'));
   });
 
   app.get('/assets/login.js', (c) => {
