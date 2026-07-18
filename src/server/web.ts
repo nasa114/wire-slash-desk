@@ -65,7 +65,7 @@ function loadHtmxSource(): string {
   return htmxSource;
 }
 
-/** src/server/assets/ の静的ファイル(ログイン画面の背景SVG・アラートJS・時計JS)。 */
+/** src/server/assets/ の静的ファイル(共通CSS・ログイン画面の背景SVG・アラートJS・時計JS)。 */
 const assetCache = new Map<string, string>();
 function loadAsset(name: string): string {
   let content = assetCache.get(name);
@@ -256,7 +256,8 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        // スタイルは /assets/app.css のみ(インライン style / <style> は不使用)。
+        styleSrc: ["'self'"],
         imgSrc: ["'self'"],
         connectSrc: ["'self'"],
         baseUri: ["'none'"],
@@ -322,6 +323,12 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     c.header('cache-control', 'public, max-age=86400');
     c.header('content-type', 'text/javascript; charset=utf-8');
     return c.body(loadHtmxSource());
+  });
+
+  app.get('/assets/app.css', (c) => {
+    c.header('cache-control', 'public, max-age=86400');
+    c.header('content-type', 'text/css; charset=utf-8');
+    return c.body(loadAsset('app.css'));
   });
 
   app.get('/assets/clock.js', (c) => {
