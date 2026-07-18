@@ -15,9 +15,12 @@ import { isPrivateIpLiteral } from './ssrf.ts';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.ts';
 import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
+import { OAUTH_SCOPES, type RssOAuthProvider } from './oauth-provider.ts';
 import {
   articlesBody,
   authLayout,
+  consentBody,
+  consentErrorBody,
   dashboardBody,
   feedEditBody,
   feedsBody,
@@ -47,6 +50,8 @@ export interface WebDeps {
   loginThrottle?: LoginThrottle;
   /** 送信元 IP の取得(既定は TCP 接続元。X-Forwarded-For は既定で信頼しない)。テストで注入可。 */
   clientIp?: (c: Context<WebEnv>) => string;
+  /** MCP OAuth 2.1 の同意画面を有効にする(T4-2)。未指定なら OAuth 無効。 */
+  oauthProvider?: RssOAuthProvider;
 }
 
 type WebEnv = { Variables: { user: User } };
@@ -200,6 +205,18 @@ function parseFeedForm(body: Record<string, unknown>): FeedFormParse {
 const USERNAME_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const MIN_PASSWORD_LEN = 8;
 const MAX_PASSWORD_LEN = 200;
+
+/**
+ * ログイン後リダイレクト(next)の許可判定。オープンリダイレクト対策として
+ * 同一オリジンの絶対パスのみ許可する(`//evil.example` やバックスラッシュ・
+ * 制御文字入りは拒否)。許可できない値は null。
+ */
+const SAFE_NEXT_RE = /^\/[\x21-\x7e]*$/;
+function safeNext(value: string | undefined): string | null {
+  if (value === undefined || value === '' || value.length > 512) return null;
+  if (!SAFE_NEXT_RE.test(value) || value.startsWith('//') || value.includes('\\')) return null;
+  return value;
+}
 
 /* --------------------------------------------------------------- app */
 
@@ -368,9 +385,17 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     if ((await deps.repos.users.count()) === 0) return c.redirect('/setup', 302);
     if ((await resolveUser(c)) !== null) return c.redirect('/', 302);
     const notice = c.req.query('created') === '1' ? '管理ユーザーを作成しました。ログインしてください。' : undefined;
+    const next = safeNext(c.req.query('next'));
     return html(
       c,
-      authLayout('ログイン — Wire Desk', loginBody(notice !== undefined ? { notice } : {}), { login: true }),
+      authLayout(
+        'ログイン — Wire Desk',
+        loginBody({
+          ...(notice !== undefined ? { notice } : {}),
+          ...(next !== null ? { next } : {}),
+        }),
+        { login: true },
+      ),
     );
   });
 
@@ -378,6 +403,7 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     const body = await c.req.parseBody();
     const username = formStr(body, 'username');
     const password = typeof body['password'] === 'string' ? body['password'] : '';
+    const next = safeNext(formStr(body, 'next'));
     const keys = throttleKeys(c, username);
 
     // 総当たり対策: 閾値到達なら scrypt 検証すら行わず 429 を返す
@@ -389,7 +415,10 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
         c,
         authLayout(
           'ログイン — Wire Desk',
-          loginBody({ error: '試行回数が多すぎます。しばらく時間をおいて再度お試しください。' }),
+          loginBody({
+            error: '試行回数が多すぎます。しばらく時間をおいて再度お試しください。',
+            ...(next !== null ? { next } : {}),
+          }),
           { login: true },
         ),
         429,
@@ -411,7 +440,10 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
         c,
         authLayout(
           'ログイン — Wire Desk',
-          loginBody({ error: 'ユーザー名またはパスワードが正しくありません。' }),
+          loginBody({
+            error: 'ユーザー名またはパスワードが正しくありません。',
+            ...(next !== null ? { next } : {}),
+          }),
           { login: true },
         ),
         401,
@@ -437,7 +469,7 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       secure: deps.cookieSecure,
       maxAge: Math.floor(SESSION_TTL_MS / 1000),
     });
-    return c.redirect('/', 303);
+    return c.redirect(next ?? '/', 303);
   });
 
   app.post('/logout', async (c) => {
@@ -448,6 +480,65 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     deleteCookie(c, SESSION_COOKIE_NAME, { path: '/' });
     return c.redirect('/login', 303);
   });
+
+  /* ------------------------------------- MCP OAuth 同意画面(T4-2) */
+
+  const oauthProvider = deps.oauthProvider;
+  if (oauthProvider !== undefined) {
+    // /authorize(SDK ハンドラ)が発行する request id の形式(base64url 16 バイト)。
+    const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+    const consentError = (c: Context<WebEnv>): Response =>
+      html(c, authLayout('認可エラー — Wire Desk', consentErrorBody()), 400);
+
+    app.get('/oauth/consent', async (c) => {
+      const requestId = c.req.query('request') ?? '';
+      if (!REQUEST_ID_RE.test(requestId)) return consentError(c);
+      const user = await resolveUser(c);
+      if (user === null) {
+        // 未ログインならログイン後にこの同意画面へ戻す。
+        const next = `/oauth/consent?request=${encodeURIComponent(requestId)}`;
+        return c.redirect(`/login?next=${encodeURIComponent(next)}`, 302);
+      }
+      const pending = oauthProvider.peekPendingAuthorization(requestId);
+      if (pending === null) return consentError(c);
+      const clientName =
+        typeof pending.client.client_name === 'string' && pending.client.client_name !== ''
+          ? pending.client.client_name
+          : pending.client.client_id;
+      return html(
+        c,
+        authLayout(
+          'MCP クライアントの接続許可 — Wire Desk',
+          consentBody({
+            requestId,
+            clientName,
+            redirectUri: pending.params.redirectUri,
+            scopes: OAUTH_SCOPES,
+            username: user.username,
+          }),
+        ),
+      );
+    });
+
+    app.post('/oauth/consent', async (c) => {
+      const user = await resolveUser(c);
+      if (user === null) return c.text('unauthorized', 401);
+      const body = await c.req.parseBody();
+      const requestId = formStr(body, 'request');
+      const action = formStr(body, 'action');
+      if (!REQUEST_ID_RE.test(requestId) || (action !== 'approve' && action !== 'deny')) {
+        return consentError(c);
+      }
+      const result = await oauthProvider.completeAuthorization(
+        requestId,
+        user.id,
+        action === 'approve',
+      );
+      if (result === null) return consentError(c);
+      // 承認/拒否の結果はクライアントの redirect_uri へ返す(コード or access_denied)。
+      return c.redirect(result.redirectTo, 303);
+    });
+  }
 
   /* ------------------------------------------------- 旧 /ui 互換 */
 

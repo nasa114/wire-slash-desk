@@ -198,3 +198,29 @@ test('buildUserAgent: 連絡先ありなし', () => {
     'personal-rss-reader/0.1 (+admin@example.com)',
   );
 });
+
+// --- OAUTH_ISSUER_URL (T4-2) --------------------------------------------
+
+test('loadConfig: OAUTH_ISSUER_URL 未設定なら undefined(OAuth 無効)', () => {
+  assert.equal(loadConfig({}).oauthIssuerUrl, undefined);
+  assert.equal(loadConfig({ OAUTH_ISSUER_URL: '   ' }).oauthIssuerUrl, undefined);
+});
+
+test('loadConfig: OAUTH_ISSUER_URL は https、localhost のみ http 可', () => {
+  assert.equal(
+    loadConfig({ OAUTH_ISSUER_URL: 'https://reader.example.com' }).oauthIssuerUrl,
+    'https://reader.example.com/',
+  );
+  assert.equal(
+    loadConfig({ OAUTH_ISSUER_URL: 'http://localhost:3000' }).oauthIssuerUrl,
+    'http://localhost:3000/',
+  );
+  assert.equal(
+    loadConfig({ OAUTH_ISSUER_URL: 'http://127.0.0.1:3000' }).oauthIssuerUrl,
+    'http://127.0.0.1:3000/',
+  );
+  assert.throws(() => loadConfig({ OAUTH_ISSUER_URL: 'http://reader.example.com' }), ConfigError);
+  assert.throws(() => loadConfig({ OAUTH_ISSUER_URL: 'not a url' }), ConfigError);
+  assert.throws(() => loadConfig({ OAUTH_ISSUER_URL: 'https://x.example/?a=1' }), ConfigError);
+  assert.throws(() => loadConfig({ OAUTH_ISSUER_URL: 'https://x.example/#frag' }), ConfigError);
+});

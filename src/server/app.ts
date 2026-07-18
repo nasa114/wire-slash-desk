@@ -1,11 +1,17 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { getRequestListener } from '@hono/node-server';
+import express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import {
+  getOAuthProtectedResourceMetadataUrl,
+  mcpAuthRouter,
+} from '@modelcontextprotocol/sdk/server/auth/router.js';
 import type { Repositories } from '../domain/repositories.ts';
 import { createMcpServer } from '../mcp/server.ts';
 import type { FetchFn } from '../mcp/fetch-content.ts';
 import type { LookupFn } from './ssrf.ts';
 import { verifyBearer, verifyCollectorToken } from './auth.ts';
+import { OAUTH_SCOPES, RssOAuthProvider } from './oauth-provider.ts';
 import { createWebApp } from './web.ts';
 
 export interface AppDeps {
@@ -22,6 +28,12 @@ export interface AppDeps {
   trustEgressProxy?: boolean;
   /** セッション Cookie に Secure 属性を付ける(TLS 配下で true)。既定 false。 */
   cookieSecure?: boolean;
+  /**
+   * MCP OAuth 2.1(T4-2)の issuer URL(例: https://reader.example)。
+   * 指定時のみ /authorize /token /register /revoke と well-known メタデータが
+   * 有効になる。未指定なら従来どおり静的 Bearer のみ。
+   */
+  oauthIssuerUrl?: string;
 }
 
 const MAX_COLLECT_BODY_BYTES = 64 * 1024;
@@ -45,6 +57,35 @@ async function drainBody(req: IncomingMessage, maxBytes: number): Promise<void> 
 
 /** node:http の Server を生成(未 listen)。設計書 §7, §8。 */
 export function createApp(deps: AppDeps): Server {
+  // MCP OAuth 2.1(設計書 §7 Phase B)。プロトコル実装は SDK の公式ハンドラ
+  // (express ベース)に委ね、発行・保存は RssOAuthProvider がリポジトリへ橋渡し。
+  let oauthProvider: RssOAuthProvider | undefined;
+  let oauthListener: ((req: IncomingMessage, res: ServerResponse) => void) | undefined;
+  let resourceMetadataUrl: string | undefined;
+  if (deps.oauthIssuerUrl !== undefined) {
+    const issuerUrl = new URL(deps.oauthIssuerUrl);
+    oauthProvider = new RssOAuthProvider({
+      repos: deps.repos,
+      ...(deps.now !== undefined ? { now: deps.now } : {}),
+    });
+    resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(new URL('/mcp', issuerUrl));
+    const oauthApp = express();
+    oauthApp.use(
+      mcpAuthRouter({
+        provider: oauthProvider,
+        issuerUrl,
+        resourceServerUrl: new URL('/mcp', issuerUrl),
+        scopesSupported: OAUTH_SCOPES,
+        resourceName: 'Personal RSS Reader',
+      }),
+    );
+    oauthListener = oauthApp;
+  }
+  /** SDK ルーターが root にマウントする OAuth エンドポイント群。 */
+  const OAUTH_ENDPOINTS = new Set(['/authorize', '/token', '/register', '/revoke']);
+  const isOAuthPath = (p: string): boolean =>
+    OAUTH_ENDPOINTS.has(p) || p.startsWith('/.well-known/oauth-');
+
   // 二重発火対策(single-flight): 実行中の collect Promise を共有する。
   let inflightCollect: Promise<unknown> | null = null;
 
@@ -80,13 +121,34 @@ export function createApp(deps: AppDeps): Server {
     }
   };
 
+  /**
+   * /mcp の認証: 静的 Bearer(Phase A、Codex 等 OAuth 非対応クライアント用に共存)
+   * または OAuth アクセストークン(Phase B)のどちらかを受け入れる。
+   */
+  const authenticateMcp = async (authValue: string | undefined): Promise<boolean> => {
+    if (verifyBearer(authValue, deps.mcpBearerToken)) return true;
+    if (oauthProvider === undefined || authValue === undefined) return false;
+    if (!authValue.startsWith('Bearer ')) return false;
+    try {
+      await oauthProvider.verifyAccessToken(authValue.slice('Bearer '.length));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleMcp = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const auth = req.headers['authorization'];
     const authValue = Array.isArray(auth) ? auth[0] : auth;
-    if (!verifyBearer(authValue, deps.mcpBearerToken)) {
+    if (!(await authenticateMcp(authValue))) {
       res.writeHead(401, {
         'content-type': 'application/json; charset=utf-8',
-        'www-authenticate': 'Bearer',
+        // RFC 9728 / MCP authorization 仕様: クライアントはこのメタデータ URL から
+        // 認可サーバーを発見してフローを開始する。
+        'www-authenticate':
+          resourceMetadataUrl !== undefined
+            ? `Bearer resource_metadata="${resourceMetadataUrl}"`
+            : 'Bearer',
       });
       res.end(JSON.stringify({ status: 'unauthorized' }));
       return;
@@ -116,6 +178,7 @@ export function createApp(deps: AppDeps): Server {
     repos: deps.repos,
     cookieSecure: deps.cookieSecure ?? false,
     ...(deps.now !== undefined ? { now: deps.now } : {}),
+    ...(oauthProvider !== undefined ? { oauthProvider } : {}),
   });
   const webListener = getRequestListener(webApp.fetch);
 
@@ -145,6 +208,11 @@ export function createApp(deps: AppDeps): Server {
         }
         // ステートレスのため GET/DELETE は非対応。
         sendJson(res, 405, { status: 'method_not_allowed' });
+        return;
+      }
+      if (oauthListener !== undefined && path !== undefined && isOAuthPath(path)) {
+        // OAuth エンドポイントは SDK の express ルーターに委譲する。
+        oauthListener(req, res);
         return;
       }
       // それ以外(/, /articles, /feeds, /login, /setup, /assets, 旧 /ui 互換)は Web UI。

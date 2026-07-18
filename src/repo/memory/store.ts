@@ -1,15 +1,37 @@
-import type { Article, Feed, Session, User } from '../../domain/types.ts';
+import type {
+  Article,
+  Feed,
+  OAuthClient,
+  OAuthCode,
+  OAuthToken,
+  Session,
+  User,
+} from '../../domain/types.ts';
 
-/** feeds/articles(および users/sessions)が cascade 削除を共有するための共通ストア。 */
+/** feeds/articles(および users/sessions/oauth_*)が cascade 削除を共有するための共通ストア。 */
 export interface MemoryStore {
   feeds: Map<string, Feed>;
   articles: Map<string, Article>;
   users: Map<string, User>;
   sessions: Map<string, Session>;
+  /** key = clientId */
+  oauthClients: Map<string, OAuthClient>;
+  /** key = codeHash */
+  oauthCodes: Map<string, OAuthCode>;
+  /** key = id */
+  oauthTokens: Map<string, OAuthToken>;
 }
 
 export function createMemoryStore(): MemoryStore {
-  return { feeds: new Map(), articles: new Map(), users: new Map(), sessions: new Map() };
+  return {
+    feeds: new Map(),
+    articles: new Map(),
+    users: new Map(),
+    sessions: new Map(),
+    oauthClients: new Map(),
+    oauthCodes: new Map(),
+    oauthTokens: new Map(),
+  };
 }
 
 /**
@@ -47,5 +69,32 @@ export function cloneSession(session: Session): Session {
     ...session,
     expiresAt: new Date(session.expiresAt),
     createdAt: new Date(session.createdAt),
+  };
+}
+
+export function cloneOAuthClient(client: OAuthClient): OAuthClient {
+  return {
+    ...client,
+    clientInfo: structuredClone(client.clientInfo),
+    createdAt: new Date(client.createdAt),
+  };
+}
+
+export function cloneOAuthCode(code: OAuthCode): OAuthCode {
+  return {
+    ...code,
+    scopes: [...code.scopes],
+    expiresAt: new Date(code.expiresAt),
+    createdAt: new Date(code.createdAt),
+  };
+}
+
+export function cloneOAuthToken(token: OAuthToken): OAuthToken {
+  return {
+    ...token,
+    scopes: [...token.scopes],
+    accessExpiresAt: new Date(token.accessExpiresAt),
+    refreshExpiresAt: new Date(token.refreshExpiresAt),
+    createdAt: new Date(token.createdAt),
   };
 }

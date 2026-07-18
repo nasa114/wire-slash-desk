@@ -19,6 +19,13 @@ export class DuplicateUsernameError extends Error {
   }
 }
 
+export class DuplicateOAuthClientError extends Error {
+  constructor(clientId: string) {
+    super(`oauth client already exists: ${clientId}`);
+    this.name = 'DuplicateOAuthClientError';
+  }
+}
+
 export class ValidationError extends Error {
   constructor(message: string) {
     super(message);

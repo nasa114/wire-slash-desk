@@ -4,8 +4,14 @@ import type {
   FeedPatch,
   NewArticle,
   NewFeed,
+  NewOAuthClient,
+  NewOAuthCode,
+  NewOAuthToken,
   NewSession,
   NewUser,
+  OAuthClient,
+  OAuthCode,
+  OAuthToken,
   Session,
   User,
 } from './types.ts';
@@ -81,10 +87,52 @@ export interface SessionRepository {
   deleteExpired(now: Date): Promise<number>;
 }
 
+/** MCP OAuth 2.1 の動的登録クライアント(T4-2)。 */
+export interface OAuthClientRepository {
+  /** clientId 重複は DuplicateOAuthClientError(DCR は常にサーバー生成 UUID のため通常起きない)。 */
+  create(input: NewOAuthClient): Promise<OAuthClient>;
+  getById(clientId: string): Promise<OAuthClient | null>;
+  /** DCR が無認証のため、資源枯渇対策の登録上限チェックに使う。 */
+  count(): Promise<number>;
+}
+
+/** 認可コード(one-time)。 */
+export interface OAuthCodeRepository {
+  /** 存在しない clientId / userId は NotFoundError。 */
+  create(input: NewOAuthCode): Promise<OAuthCode>;
+  /** PKCE チャレンジ参照用(消費しない)。 */
+  getByCodeHash(codeHash: string): Promise<OAuthCode | null>;
+  /** 取得と同時に削除し one-time use を原子的に保証する。無ければ null。 */
+  consumeByCodeHash(codeHash: string): Promise<OAuthCode | null>;
+  deleteExpired(now: Date): Promise<number>;
+}
+
+/** アクセス/リフレッシュトークン。 */
+export interface OAuthTokenRepository {
+  /** 存在しない clientId / userId は NotFoundError。 */
+  create(input: NewOAuthToken): Promise<OAuthToken>;
+  getByAccessTokenHash(hash: string): Promise<OAuthToken | null>;
+  getByRefreshTokenHash(hash: string): Promise<OAuthToken | null>;
+  /**
+   * refresh ハッシュ一致のレコードを取得と同時に削除する(ローテーションの原子化)。
+   * 並行リフレッシュや盗難トークンの再利用で二重発行しないための one-time 保証。
+   */
+  consumeByRefreshTokenHash(hash: string): Promise<OAuthToken | null>;
+  /** リフレッシュローテーション用。存在しなくてもエラーにしない。 */
+  deleteById(id: string): Promise<void>;
+  /** RFC 7009 失効: access / refresh どちらのハッシュ一致でもレコードごと削除。 */
+  deleteByAnyTokenHash(hash: string): Promise<void>;
+  /** refreshExpiresAt <= now のレコードを削除(refresh が生きている限り残す)。 */
+  deleteExpired(now: Date): Promise<number>;
+}
+
 export interface Repositories {
   feeds: FeedRepository;
   articles: ArticleRepository;
   users: UserRepository;
   sessions: SessionRepository;
+  oauthClients: OAuthClientRepository;
+  oauthCodes: OAuthCodeRepository;
+  oauthTokens: OAuthTokenRepository;
   close(): Promise<void>;
 }

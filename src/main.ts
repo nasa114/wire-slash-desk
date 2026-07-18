@@ -77,6 +77,7 @@ async function main(): Promise<void> {
     cacheFulltext: config.cacheFulltext,
     trustEgressProxy: config.trustEgressProxy,
     cookieSecure: config.cookieSecure,
+    ...(config.oauthIssuerUrl !== undefined ? { oauthIssuerUrl: config.oauthIssuerUrl } : {}),
     userAgent,
   });
 

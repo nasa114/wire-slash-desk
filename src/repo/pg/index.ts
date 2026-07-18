@@ -4,6 +4,11 @@ import { PgFeedRepository } from './feed-repository.ts';
 import { PgArticleRepository } from './article-repository.ts';
 import { PgUserRepository } from './user-repository.ts';
 import { PgSessionRepository } from './session-repository.ts';
+import {
+  PgOAuthClientRepository,
+  PgOAuthCodeRepository,
+  PgOAuthTokenRepository,
+} from './oauth-repositories.ts';
 
 /** PostgreSQL 実装(T1-2)。close() は内部の Pool を終了する。 */
 export function createPgRepositories(connectionString: string): Repositories {
@@ -13,6 +18,9 @@ export function createPgRepositories(connectionString: string): Repositories {
     articles: new PgArticleRepository(pool),
     users: new PgUserRepository(pool),
     sessions: new PgSessionRepository(pool),
+    oauthClients: new PgOAuthClientRepository(pool),
+    oauthCodes: new PgOAuthCodeRepository(pool),
+    oauthTokens: new PgOAuthTokenRepository(pool),
     close: async () => {
       await pool.end();
     },

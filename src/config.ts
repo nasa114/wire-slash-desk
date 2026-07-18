@@ -19,6 +19,12 @@ export interface AppConfig {
    * 未設定なら NODE_ENV=production のとき true(HTTPS 前提)。
    */
   cookieSecure: boolean;
+  /**
+   * MCP OAuth 2.1(T4-2)の issuer URL(外部から到達できる自サイトのオリジン。
+   * 例: https://reader.example)。未設定なら OAuth エンドポイントは無効で、
+   * /mcp は静的 Bearer のみ受け付ける(従来動作)。
+   */
+  oauthIssuerUrl: string | undefined;
   nodeEnv: string;
 }
 
@@ -75,6 +81,28 @@ export function validateEgressProxyTrust(
   }
 }
 
+/**
+ * OAUTH_ISSUER_URL の検証。RFC 8414 の issuer 要件(https・query/fragment なし)に
+ * 合わせる。ローカル動作確認用に localhost / 127.0.0.1 のみ http を許す
+ * (SDK 側 checkIssuerUrl と同じ緩和)。不正なら ConfigError で起動を拒否する。
+ */
+function validateOAuthIssuerUrl(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new ConfigError('OAUTH_ISSUER_URL is not a valid URL');
+  }
+  const isLoopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'https:' && !isLoopback) {
+    throw new ConfigError('OAUTH_ISSUER_URL must be https (http is allowed only for localhost)');
+  }
+  if (url.search !== '' || url.hash !== '') {
+    throw new ConfigError('OAUTH_ISSUER_URL must not contain a query or fragment');
+  }
+  return url.href;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const portRaw = readString(env, 'PORT');
   const port = portRaw !== undefined ? Number.parseInt(portRaw, 10) : 3000;
@@ -85,6 +113,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const cookieSecureRaw = readString(env, 'SESSION_COOKIE_SECURE');
   const cookieSecure =
     cookieSecureRaw !== undefined ? cookieSecureRaw === 'true' : nodeEnv === 'production';
+  const oauthIssuerRaw = readString(env, 'OAUTH_ISSUER_URL');
+  const oauthIssuerUrl =
+    oauthIssuerRaw !== undefined ? validateOAuthIssuerUrl(oauthIssuerRaw) : undefined;
   return {
     port: Number.isFinite(port) && port > 0 ? port : 3000,
     databaseUrl: readString(env, 'DATABASE_URL'),
@@ -94,6 +125,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     collectorContact: readString(env, 'COLLECTOR_CONTACT'),
     trustEgressProxy,
     cookieSecure,
+    oauthIssuerUrl,
     nodeEnv,
   };
 }

@@ -754,12 +754,14 @@ ${feedFormFields(form)}
 
 /* -------------------------------------------------------- auth pages */
 
-export function loginBody(input: { error?: string; notice?: string } = {}): string {
+export function loginBody(input: { error?: string; notice?: string; next?: string } = {}): string {
   // data-login-alert: /assets/login.js が読み取り window.alert を出す。
   // 文言はどのフィールドが誤りかを判別できないものだけを渡すこと(ユーザー列挙対策)。
+  // next はサーバー側で検証済みの相対パスのみが渡される(オープンリダイレクト対策は web.ts)。
   return `${input.error ? `<div class="banner error" role="alert" data-login-alert="${escapeHtml(input.error)}">${escapeHtml(input.error)}</div>` : ''}
 ${input.notice ? `<div class="banner notice">${escapeHtml(input.notice)}</div>` : ''}
 <form method="post" action="/login">
+  ${input.next !== undefined ? `<input type="hidden" name="next" value="${escapeHtml(input.next)}">` : ''}
   <div class="field">
     <label for="username">ユーザー名</label>
     <input id="username" type="text" name="username" required autocomplete="username" autofocus>
@@ -770,6 +772,40 @@ ${input.notice ? `<div class="banner notice">${escapeHtml(input.notice)}</div>` 
   </div>
   <button type="submit" class="btn">ログイン</button>
 </form>`;
+}
+
+/** OAuth 同意画面(T4-2)。表示文字列はすべて escapeHtml 済みで渡すこと。 */
+export function consentBody(input: {
+  requestId: string;
+  clientName: string;
+  redirectUri: string;
+  scopes: string[];
+  username: string;
+}): string {
+  return `<p style="font-size:0.86rem;color:var(--ink-2);margin:0 0 4px">
+MCP クライアントが <strong>${escapeHtml(input.username)}</strong> としてこのサーバーへの接続を要求しています。
+</p>
+<dl class="consent-facts" style="font-size:0.86rem;margin:0 0 12px">
+  <dt style="color:var(--ink-3)">クライアント</dt>
+  <dd style="margin:0 0 6px">${escapeHtml(input.clientName)}</dd>
+  <dt style="color:var(--ink-3)">許可後のリダイレクト先</dt>
+  <dd style="margin:0 0 6px;word-break:break-all">${escapeHtml(input.redirectUri)}</dd>
+  <dt style="color:var(--ink-3)">スコープ</dt>
+  <dd style="margin:0">${escapeHtml(input.scopes.join(' '))}(記事・フィードの読み取りとダイジェスト保存)</dd>
+</dl>
+<form method="post" action="/oauth/consent">
+  <input type="hidden" name="request" value="${escapeHtml(input.requestId)}">
+  <div style="display:flex;gap:10px">
+    <button type="submit" name="action" value="approve" class="btn">許可する</button>
+    <button type="submit" name="action" value="deny" class="btn-ghost" style="font-size:0.86rem">拒否する</button>
+  </div>
+</form>`;
+}
+
+/** 同意リクエストが不明・期限切れのときのエラー表示。詳細は書きすぎない。 */
+export function consentErrorBody(): string {
+  return `<div class="banner error" role="alert">認可リクエストが無効か、有効期限が切れています。</div>
+<p style="font-size:0.86rem;color:var(--ink-2)">MCP クライアント側から接続をやり直してください。</p>`;
 }
 
 export function setupBody(input: { error?: string; username?: string } = {}): string {

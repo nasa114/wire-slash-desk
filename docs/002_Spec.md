@@ -141,6 +141,7 @@ Transport: Streamable HTTP（`/mcp`）。ツールは読み取り中心から始
 **認証**
 - Phase A: 静的Bearerトークン（環境変数、タイミングセーフ比較、HTTPS必須）
 - Phase B: MCP仕様のOAuth 2.1（PKCE、Protected Resource Metadata）。ChatGPT側コネクタ要件も踏まえPhase Bを本対応とする
+  - **実装済み(2026-07-18, T4-2)**: アプリ内蔵の認可サーバー（U5確定）。`/authorize` `/token` `/register`（DCR）`/revoke` と `/.well-known/oauth-authorization-server` `/.well-known/oauth-protected-resource/mcp` を `OAUTH_ISSUER_URL` 設定時のみ公開。同意は Web UI ログインユーザーが `/oauth/consent` で明示承認。トークンは不透明ランダム値で DB には sha256 ハッシュのみ保存、リフレッシュはローテーション。Phase A の静的 Bearer は OAuth 非対応クライアント（Codex CLI 等）向けに共存させる
 - `/internal/collect` は別系統の共有シークレット（`X-Collector-Token`）で保護し、MCP認証とは分離
 
 ## 8. 収集トリガー
@@ -236,5 +237,5 @@ Claude Code公式リファレンス構成に倣い、named volumeで永続化す
 | U2 | ベクトル検索の採否・埋め込みモデルと次元 | M5、`article_embeddings` の確定 |
 | U3 | ~~管理UIの技術選定~~ → **確定(2026-07-16)**: Hono + HTMX。認証は users テーブル(scrypt) + セッションCookie、UIは `/` 直下(T4-1 実装済み) | M4 |
 | U4 | TypeScript化の範囲、ORM導入の有無 | T1以降の書き方 |
-| U5 | OAuth 2.1の認可サーバーを自前実装するか外部IdPを使うか | M4 |
+| U5 | ~~OAuth 2.1の認可サーバーを自前実装するか外部IdPを使うか~~ → **確定(2026-07-18)**: アプリ内蔵の認可サーバー(MCP SDK 公式ハンドラ + `RssOAuthProvider`)。`OAUTH_ISSUER_URL` 設定時のみ有効。静的 Bearer は Codex 等 OAuth 非対応クライアント向けに恒久共存(T4-2 実装済み) | M4 |
 | U6 | 翻訳結果・ダイジェストの保存方針（`digests` を使うか、クライアント側に置くか） | スキーマ運用 |

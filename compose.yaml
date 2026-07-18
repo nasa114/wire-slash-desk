@@ -75,6 +75,9 @@ services:
       COLLECTOR_CONTACT: ${COLLECTOR_CONTACT:-}
       # NODE_ENV=production のため既定 true(HTTPS 前提)。HTTP 検証時のみ false を明示。
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      # MCP OAuth 2.1(T4-2)。外部到達可能な https オリジンを設定すると有効化。
+      # 未設定(空)なら OAuth 無効で /mcp は MCP_BEARER_TOKEN のみ(従来動作)。
+      OAUTH_ISSUER_URL: ${OAUTH_ISSUER_URL:-}
       # egress は squid プロキシ経由に限定する(SSRF 対策。docs/004_KnownLimitations.md §1/§5/§8)。
       # app は internal(内部通信)+ ingress(受信専用)に属し、インターネットへは squid 経由でしか出られない。
       TRUST_EGRESS_PROXY: "true"

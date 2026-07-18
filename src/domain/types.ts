@@ -83,3 +83,69 @@ export interface NewSession {
   tokenHash: string;
   expiresAt: Date;
 }
+
+/**
+ * MCP OAuth 2.1 の動的登録クライアント(T4-2、設計書 §7 Phase B)。
+ * clientInfo は RFC 7591 のクライアントメタデータ一式(redirect_uris,
+ * token_endpoint_auth_method 等)を JSON のまま保持する — SDK の
+ * OAuthClientInformationFull と同形で、スキーマ検証は SDK 側が担う。
+ */
+export interface OAuthClient {
+  clientId: string;
+  clientInfo: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface NewOAuthClient {
+  clientId: string;
+  clientInfo: Record<string, unknown>;
+}
+
+/** 認可コード(one-time)。codeHash はコード原文の sha256 hex(原文は保存しない)。 */
+export interface OAuthCode {
+  codeHash: string;
+  clientId: string;
+  userId: string;
+  /** PKCE S256 の code_challenge。トークン交換時の検証に使う。 */
+  codeChallenge: string;
+  redirectUri: string;
+  scopes: string[];
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+export interface NewOAuthCode {
+  codeHash: string;
+  clientId: string;
+  userId: string;
+  codeChallenge: string;
+  redirectUri: string;
+  scopes: string[];
+  expiresAt: Date;
+}
+
+/**
+ * アクセストークン+リフレッシュトークンの組(1レコード=1グラント)。
+ * どちらも sha256 hex のみ保存(sessions と同方針 — DB 漏洩でトークンを偽造させない)。
+ */
+export interface OAuthToken {
+  id: string;
+  clientId: string;
+  userId: string;
+  scopes: string[];
+  accessTokenHash: string;
+  accessExpiresAt: Date;
+  refreshTokenHash: string;
+  refreshExpiresAt: Date;
+  createdAt: Date;
+}
+
+export interface NewOAuthToken {
+  clientId: string;
+  userId: string;
+  scopes: string[];
+  accessTokenHash: string;
+  accessExpiresAt: Date;
+  refreshTokenHash: string;
+  refreshExpiresAt: Date;
+}

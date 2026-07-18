@@ -11,6 +11,7 @@
   "dependencies": {
     "@hono/node-server": "2.0.8",
     "@modelcontextprotocol/sdk": "1.29.0",
+    "express": "5.2.1",
     "hono": "4.12.30",
     "htmx.org": "2.0.10",
     "node-pg-migrate": "8.0.4",
@@ -19,6 +20,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/express": "5.0.6",
     "@types/node": "24.13.3",
     "@types/pg": "8.20.0",
     "typescript": "5.9.3"

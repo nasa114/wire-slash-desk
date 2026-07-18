@@ -149,7 +149,7 @@ GPT-5系は指示の曖昧さに弱いため、タスクを渡すときは必ず
 ### フェーズ4以降（未決事項の確定後に着手）
 
 - T4-1 管理UI最小版（U3確定後）: feeds CRUD、フラグ・tos_note編集
-- T4-2 OAuth 2.1（U5確定後）: MCP authorization仕様準拠
+- T4-2 OAuth 2.1（U5確定後）: MCP authorization仕様準拠 → **実装済み(2026-07-18)**: アプリ内蔵認可サーバー（設計書 §7 Phase B / §13 U5 参照）
 - T5-1 pgvector（U2確定後）: embeddings生成バッチ + search_articlesのベクトル対応
 - T5-2 2トラックスコアリング（設計書 §12。詳細設計を先に行う）
 
