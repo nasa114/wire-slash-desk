@@ -10,6 +10,13 @@
 # ポートは既定でループバックのみに束縛する(docs/004_KnownLimitations.md §2)。
 # HTTPS なしの LAN 内検証では SESSION_COOKIE_SECURE=false を .env で明示する。
 #
+# SSRF egress 分離: app は internal 網(internet 直行不可)に隔離し、外向き通信は
+# squid(egress 網)経由のみに限定する。squid が内部/予約 IP 帯を宛先とする通信を
+# 拒否し、DNS リバインディングを含む SSRF を network 層で塞ぐ(deploy/squid/squid.conf)。
+# アプリ側でも feed_url のプライベート/予約 IP リテラル直指定を拒否する(多層防御)。
+# 注意: app は internal 網のみのため、外部からの受信は published port 経由(上の ports)。
+# デプロイ先で受信到達性(リバースプロキシ→127.0.0.1:3000)を必ず確認すること。
+#
 # 収集トリガー(設計書 §8: 外部から POST /internal/collect、冪等)を compose 内で
 # 完結させたい場合は cron プロファイルを有効化する:
 #   docker compose --profile cron up -d
@@ -27,7 +34,7 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
     networks:
-      - backend
+      - internal
     healthcheck:
       # $$ でエスケープし、compose 側でなくコンテナ内シェルで環境変数を解決する
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -47,7 +54,7 @@ services:
       db:
         condition: service_healthy
     networks:
-      - backend
+      - internal
 
   app:
     build: .
@@ -64,13 +71,47 @@ services:
       COLLECTOR_CONTACT: ${COLLECTOR_CONTACT:-}
       # NODE_ENV=production のため既定 true(HTTPS 前提)。HTTP 検証時のみ false を明示。
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      # egress は squid プロキシ経由に限定する(SSRF 対策。docs/004_KnownLimitations.md §1/§5/§8)。
+      # app は internal 網のみに属し、インターネットへは squid 経由でしか出られない。
+      TRUST_EGRESS_PROXY: "true"
+      HTTP_PROXY: http://squid:3128
+      HTTPS_PROXY: http://squid:3128
+      http_proxy: http://squid:3128
+      https_proxy: http://squid:3128
+      # 迂回はループバックのみ(healthcheck 用)。DB 等の内部サービス名は入れないこと
+      # (入れると feed 取得が squid を迂回して内部へ到達し得る)。
+      NO_PROXY: localhost,127.0.0.1
+      no_proxy: localhost,127.0.0.1
+      # undici(fetch)に proxy env を読ませる。プロセス起動時に必要(compose environment なら有効)。
+      NODE_USE_ENV_PROXY: "1"
     depends_on:
       db:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      squid:
+        condition: service_healthy
     networks:
-      - backend
+      - internal
+
+  # egress プロキシ(SSRF 対策)。app の唯一のインターネット出口。
+  # 内部/予約 IP 帯を宛先とする通信を拒否する(deploy/squid/squid.conf、denylist 方式)。
+  # squid は「解決する主体=接続する主体」なので、DNS リバインディング(§1)も構造的に塞ぐ。
+  squid:
+    image: ubuntu/squid:latest
+    restart: unless-stopped
+    volumes:
+      - ./deploy/squid/squid.conf:/etc/squid/squid.conf:ro
+      - squid-logs:/var/log/squid
+    networks:
+      - internal # app からの接続を受ける
+      - egress # インターネットへ出る
+    healthcheck:
+      test: ["CMD-SHELL", "squid -k check || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   # 任意: 収集の定期トリガー(--profile cron で有効化)。
   # GitHub Actions schedule / cloud timer を使う場合はこのサービスは不要(設計書 §8 D7)。
@@ -98,11 +139,18 @@ services:
       migrate:
         condition: service_completed_successfully
     networks:
-      - backend
+      - internal
 
 networks:
-  backend:
+  # 内部網: インターネットへの直接経路を持たない(internal: true)。
+  # db / migrate / app / collector-cron はここだけに属し、外部到達は squid 経由に限定される。
+  internal:
+    driver: bridge
+    internal: true
+  # egress 網: squid のみが属し、インターネットへの経路を持つ。
+  egress:
     driver: bridge
 
 volumes:
   pg-data:
+  squid-logs:
