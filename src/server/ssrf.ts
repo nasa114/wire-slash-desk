@@ -146,6 +146,18 @@ function stripBrackets(host: string): string {
 }
 
 /**
+ * ホスト文字列が「プライベート/予約 IP のリテラル」なら true。
+ * ホスト名(非 IP リテラル)は名前解決しないため false を返す — 解決先の判定は
+ * 取得時の SSRF ガード(assertPublicHttpUrl)と egress プロキシに委ねる。
+ * フィード URL 登録時の入口バリデーション用(設計書 §6、IP 直指定の悪用を弾く)。
+ * URL.hostname が返す IPv6 の角括弧は取り除いてから判定する。
+ */
+export function isPrivateIpLiteral(host: string): boolean {
+  const h = stripBrackets(host);
+  return isIP(h) !== 0 && isPrivateAddress(h);
+}
+
+/**
  * URL が本文取得に使ってよい公開先か検証(設計書 §6 SSRF)。
  * - スキームは http/https のみ
  * - hostname を解決し、全アドレスが公開 IP であること

@@ -3,9 +3,25 @@ import assert from 'node:assert/strict';
 import {
   assertPublicHttpUrl,
   isPrivateAddress,
+  isPrivateIpLiteral,
   SsrfError,
   type LookupFn,
 } from '../../src/server/ssrf.ts';
+
+test('isPrivateIpLiteral: プライベート/予約 IP リテラルのみ true、ホスト名・公開IPは false', () => {
+  // プライベート/予約の IP リテラル(角括弧つき IPv6 も含む)→ true
+  for (const h of ['127.0.0.1', '10.0.0.5', '169.254.169.254', '0.0.0.0', '::1', '[::1]', 'fc00::1', '::ffff:127.0.0.1']) {
+    assert.equal(isPrivateIpLiteral(h), true, `${h} は private リテラル`);
+  }
+  // 公開 IP リテラル → false(登録時は許可し、解決先チェックは取得時/プロキシに委ねる)
+  for (const h of ['8.8.8.8', '93.184.216.34', '2606:4700:4700::1111']) {
+    assert.equal(isPrivateIpLiteral(h), false, `${h} は公開 IP リテラル`);
+  }
+  // ホスト名(非リテラル)→ false(ここでは解決しない。localhost も文字列としては非リテラル)
+  for (const h of ['example.com', 'feed.evil.example', 'localhost', 'db']) {
+    assert.equal(isPrivateIpLiteral(h), false, `${h} はホスト名`);
+  }
+});
 
 test('isPrivateAddress: representative private/public table', () => {
   // 非公開(true)

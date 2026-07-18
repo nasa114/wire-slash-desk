@@ -11,6 +11,7 @@ import type { Repositories } from '../domain/repositories.ts';
 import type { Article, NewFeed, User } from '../domain/types.ts';
 import { DuplicateFeedUrlError, DuplicateUsernameError, NotFoundError } from '../domain/errors.ts';
 import { getConnInfo } from '@hono/node-server/conninfo';
+import { isPrivateIpLiteral } from './ssrf.ts';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.ts';
 import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
@@ -137,7 +138,11 @@ function validHttpUrl(raw: string): boolean {
   } catch {
     return false;
   }
-  return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  // プライベート/予約 IP のリテラル直指定は登録時点で拒否する(SSRF の入口を塞ぐ)。
+  // ホスト名の解決先チェックは取得時の SSRF ガードと egress プロキシに委ねる。
+  if (isPrivateIpLiteral(parsed.hostname)) return false;
+  return true;
 }
 
 type FeedFormParse =
