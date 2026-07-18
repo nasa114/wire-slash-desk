@@ -8,7 +8,7 @@ import { csrf } from 'hono/csrf';
 import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
 import type { Repositories } from '../domain/repositories.ts';
-import type { Article, NewFeed, User } from '../domain/types.ts';
+import type { Article, Feed, NewFeed, User } from '../domain/types.ts';
 import { DuplicateFeedUrlError, DuplicateUsernameError, NotFoundError } from '../domain/errors.ts';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { isPrivateIpLiteral } from './ssrf.ts';
@@ -122,6 +122,16 @@ async function queryArticles(
     articles = articles.filter((a) => a.feedId === filter.feedId);
   }
   return articles;
+}
+
+/**
+ * 無効化(enabled=false)したフィードの記事をトップ・記事一覧から隠す。
+ * データは削除せず表示だけを抑止するので、再有効化すれば元に戻る。
+ * レールの「フィードの状態」や enabled/total 統計は状態表示が目的のため対象外。
+ */
+function visibleArticles(articles: Article[], feeds: Feed[]): Article[] {
+  const enabledIds = new Set(feeds.filter((f) => f.enabled).map((f) => f.id));
+  return articles.filter((a) => enabledIds.has(a.feedId));
 }
 
 /* ------------------------------------------------------- form validation */
@@ -573,7 +583,14 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       deps.repos.articles.listRecent({ since, limit: 200 }),
     ]);
     const ctx = pageCtx(c, 'dashboard', { q: '', date: '' });
-    return html(c, layout('Wire Desk — パーソナルRSSリーダー', ctx, dashboardBody({ last24, feeds })));
+    return html(
+      c,
+      layout(
+        'Wire Desk — パーソナルRSSリーダー',
+        ctx,
+        dashboardBody({ last24: visibleArticles(last24, feeds), feeds }),
+      ),
+    );
   });
 
   app.get('/articles', async (c) => {
@@ -591,7 +608,14 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       deps.repos.feeds.list(),
       queryArticles(deps.repos, { q, date, feedId }),
     ]);
-    return html(c, layout('記事一覧 — Wire Desk', ctx, articlesBody({ articles, feeds, q, date, feedId })));
+    return html(
+      c,
+      layout(
+        '記事一覧 — Wire Desk',
+        ctx,
+        articlesBody({ articles: visibleArticles(articles, feeds), feeds, q, date, feedId }),
+      ),
+    );
   });
 
   /* ------------------------------------------------ feeds CRUD(T4-1) */
