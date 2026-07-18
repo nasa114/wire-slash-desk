@@ -1,4 +1,5 @@
 node_modules/
+.pnpm-store/
 backups/
 *.log
 .env
@@ -8,3 +9,10 @@ coverage/
 dist/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# ビルド/エディタ/OS 生成物
+*.tsbuildinfo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
