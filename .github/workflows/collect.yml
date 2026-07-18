@@ -1,9 +1,9 @@
 name: Feed Collection
 
 on:
-  schedule:
-    # 30分ごとにRSSフィードを収集
-    - cron: '*/30 * * * *'
+  # schedule:
+  #   # 30分ごとにRSSフィードを収集
+  #   - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
