@@ -14,8 +14,12 @@
 # squid(egress 網)経由のみに限定する。squid が内部/予約 IP 帯を宛先とする通信を
 # 拒否し、DNS リバインディングを含む SSRF を network 層で塞ぐ(deploy/squid/squid.conf)。
 # アプリ側でも feed_url のプライベート/予約 IP リテラル直指定を拒否する(多層防御)。
-# 注意: app は internal 網のみのため、外部からの受信は published port 経由(上の ports)。
-# デプロイ先で受信到達性(リバースプロキシ→127.0.0.1:3000)を必ず確認すること。
+# 注意: internal: true の網だけに属するコンテナは Docker がポート公開(ports)を行わない
+# (docker compose ps で "3000/tcp" とだけ表示され、ホストへの束縛が無い状態になる)。
+# そのため app は受信専用の ingress 網(非 internal・NAT マスカレード無効)にも接続する。
+# マスカレード無効により app 発のインターネット向け通信はこの網を通れず、egress は
+# 引き続き squid 経由のみ。デプロイ先で受信到達性(リバースプロキシ→127.0.0.1:3000)と
+# 「app から squid を迂回した外部到達ができないこと」を必ず確認すること。
 #
 # 収集トリガー(設計書 §8: 外部から POST /internal/collect、冪等)を compose 内で
 # 完結させたい場合は cron プロファイルを有効化する:
@@ -72,7 +76,7 @@ services:
       # NODE_ENV=production のため既定 true(HTTPS 前提)。HTTP 検証時のみ false を明示。
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
       # egress は squid プロキシ経由に限定する(SSRF 対策。docs/004_KnownLimitations.md §1/§5/§8)。
-      # app は internal 網のみに属し、インターネットへは squid 経由でしか出られない。
+      # app は internal(内部通信)+ ingress(受信専用)に属し、インターネットへは squid 経由でしか出られない。
       TRUST_EGRESS_PROXY: "true"
       HTTP_PROXY: http://squid:3128
       HTTPS_PROXY: http://squid:3128
@@ -93,6 +97,7 @@ services:
         condition: service_healthy
     networks:
       - internal
+      - ingress # 受信専用(これが無いと internal のみとなり ports が公開されない)
 
   # egress プロキシ(SSRF 対策)。app の唯一のインターネット出口。
   # 内部/予約 IP 帯を宛先とする通信を拒否する(deploy/squid/squid.conf、denylist 方式)。
@@ -150,6 +155,15 @@ networks:
   # egress 網: squid のみが属し、インターネットへの経路を持つ。
   egress:
     driver: bridge
+  # ingress 網: app の受信(ポート公開)専用。internal: true だと Docker はポート公開を
+  # 行わないため非 internal とするが、NAT マスカレードを無効化して app 発の外向き通信が
+  # この網からインターネットへ出られないようにする(公開ポートへの着信応答は conntrack で
+  # 戻るため影響なし)。残存リスク: app からブリッジのゲートウェイ IP(ホスト自身)への到達は
+  # 可能なため、ホスト上のサービスは 127.0.0.1 束縛か FW で保護すること。
+  ingress:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
 
 volumes:
   pg-data:
