@@ -109,6 +109,61 @@ async function seed(repos: Repositories): Promise<void> {
   ]);
 }
 
+test('articles: 無効化したフィードの記事はトップ・記事一覧に表示されない', async () => {
+  const { repos, base, clock, close } = await startApp();
+  try {
+    await setupAdmin(base);
+    const cookie = await login(base);
+    const current = clock.current;
+    const on = await repos.feeds.create({ name: 'OnFeed', feedUrl: 'https://on.example.com/rss' });
+    const off = await repos.feeds.create({ name: 'OffFeed', feedUrl: 'https://off.example.com/rss' });
+    await repos.articles.upsertMany([
+      {
+        feedId: on.id,
+        guid: 'a',
+        title: 'VisibleArticle',
+        url: 'https://on.example.com/a',
+        publishedAt: new Date(current.getTime() - 60_000),
+      },
+      {
+        feedId: off.id,
+        guid: 'b',
+        title: 'HiddenArticle',
+        url: 'https://off.example.com/b',
+        publishedAt: new Date(current.getTime() - 120_000),
+      },
+    ]);
+    await repos.feeds.update(off.id, { enabled: false });
+
+    // トップ: ワイヤーから消えるが、レールの状態表示(offドット)には残る。
+    const dash = await (await getPage(base, '/', cookie)).text();
+    assert.match(dash, /VisibleArticle/);
+    assert.ok(!dash.includes('HiddenArticle'), 'トップに無効フィードの記事は出ない');
+    assert.match(dash, /OffFeed/, 'レールの状態表示には残る');
+
+    // 記事一覧(既定・検索・フィード指定・日付指定)すべてで非表示。
+    const list = await (await getPage(base, '/articles', cookie)).text();
+    assert.match(list, /VisibleArticle/);
+    assert.ok(!list.includes('HiddenArticle'), '一覧に出ない');
+    // 検索語自体は結果ノートにエコーされるため、記事リンク(URL)の不在で判定する。
+    const search = await (await getPage(base, '/articles?q=HiddenArticle', cookie)).text();
+    assert.ok(!search.includes('https://off.example.com/b'), 'タイトル検索でも出ない');
+    assert.match(search, /0件/);
+    const byFeed = await (await getPage(base, `/articles?feed=${off.id}`, cookie)).text();
+    assert.ok(!byFeed.includes('HiddenArticle'), 'フィード絞り込みでも出ない');
+    const jstDate = new Date(current.getTime() - 60_000 + 9 * 60 * 60_000).toISOString().slice(0, 10);
+    const byDate = await (await getPage(base, `/articles?date=${jstDate}`, cookie)).text();
+    assert.ok(!byDate.includes('HiddenArticle'), '日付絞り込みでも出ない');
+
+    // 再有効化すれば表示が戻る(データは消えていない)。
+    await repos.feeds.update(off.id, { enabled: true });
+    const again = await (await getPage(base, '/', cookie)).text();
+    assert.match(again, /HiddenArticle/);
+  } finally {
+    await close();
+  }
+});
+
 /* ------------------------------------------------------ 認証・セッション */
 
 test('auth: 未ログインの保護ページは /login へリダイレクト', async () => {
