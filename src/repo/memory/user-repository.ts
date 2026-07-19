@@ -27,6 +27,22 @@ export class MemoryUserRepository implements UserRepository {
     return cloneUser(user);
   }
 
+  async createInitial(input: NewUser): Promise<User | null> {
+    // memory 実装は単一スレッドで、この関数内に await がないため判定と作成は
+    // 不可分に実行される(pg 実装は SQL 側の原子性で同じ契約を満たす)。
+    if (this.store.users.size > 0) return null;
+    const createdAt = new Date();
+    const user: User = {
+      id: randomUUID(),
+      username: input.username,
+      passwordHash: input.passwordHash,
+      createdAt,
+      updatedAt: new Date(createdAt),
+    };
+    this.store.users.set(user.id, user);
+    return cloneUser(user);
+  }
+
   async getById(id: string): Promise<User | null> {
     const user = this.store.users.get(id);
     return user ? cloneUser(user) : null;

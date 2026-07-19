@@ -9,9 +9,10 @@ import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
 import type { Repositories } from '../domain/repositories.ts';
 import type { Article, NewFeed, User } from '../domain/types.ts';
-import { DuplicateFeedUrlError, DuplicateUsernameError, NotFoundError } from '../domain/errors.ts';
+import { DuplicateFeedUrlError, NotFoundError } from '../domain/errors.ts';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { isPrivateIpLiteral } from './ssrf.ts';
+import { timingSafeEqualStr } from './auth.ts';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.ts';
 import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
@@ -52,6 +53,8 @@ export interface WebDeps {
   clientIp?: (c: Context<WebEnv>) => string;
   /** MCP OAuth 2.1 の同意画面を有効にする(T4-2)。未指定なら OAuth 無効。 */
   oauthProvider?: RssOAuthProvider;
+  /** 初回セットアップを保護する任意トークン(PT-001)。未指定なら従来どおり無保護。 */
+  setupToken?: string;
 }
 
 type WebEnv = { Variables: { user: User } };
@@ -351,13 +354,19 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
 
   /* ------------------------------------------- setup(初回のみ開放) */
 
+  // PT-001: SETUP_TOKEN が設定されていれば、初回セットアップにトークン一致を必須にする。
+  const setupTokenRequired = deps.setupToken !== undefined && deps.setupToken !== '';
+  const setupTokenOk = (provided: string): boolean =>
+    !setupTokenRequired || timingSafeEqualStr(provided, deps.setupToken as string);
+
   app.get('/setup', async (c) => {
     if ((await deps.repos.users.count()) > 0) return c.redirect('/login', 302);
-    return html(c, authLayout('初回セットアップ — Wire Desk', setupBody()));
+    return html(c, authLayout('初回セットアップ — Wire Desk', setupBody({ tokenRequired: setupTokenRequired })));
   });
 
   app.post('/setup', async (c) => {
-    // TOCTOU 緩和: 判定は直前に行う。単一オーナー運用が前提(設計書 §7)。
+    // 早期の open 判定(UX 用)。実際の作成は createInitial が原子的に行うため、
+    // ここを通り抜けても二重作成は起きない(PT-001)。
     if ((await deps.repos.users.count()) > 0) {
       return c.text('setup already completed', 403);
     }
@@ -365,9 +374,25 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     const username = formStr(body, 'username');
     const password = typeof body['password'] === 'string' ? body['password'] : '';
     const confirm = typeof body['password_confirm'] === 'string' ? body['password_confirm'] : '';
+    const setupTokenInput = formStr(body, 'setup_token');
     const fail = (error: string): Response =>
-      html(c, authLayout('初回セットアップ — Wire Desk', setupBody({ error, username })), 400);
+      html(
+        c,
+        authLayout('初回セットアップ — Wire Desk', setupBody({ error, username, tokenRequired: setupTokenRequired })),
+        400,
+      );
 
+    // トークン保護時: 不一致は作成せず 403(理由は絞り、入力値も残さない)。
+    if (!setupTokenOk(setupTokenInput)) {
+      return html(
+        c,
+        authLayout(
+          '初回セットアップ — Wire Desk',
+          setupBody({ error: 'セットアップトークンが正しくありません。', tokenRequired: setupTokenRequired }),
+        ),
+        403,
+      );
+    }
     if (!USERNAME_RE.test(username)) {
       return fail('ユーザー名は英数と ._- のみ・64文字以内で入力してください。');
     }
@@ -377,11 +402,13 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     if (password !== confirm) {
       return fail('確認用パスワードが一致しません。');
     }
-    try {
-      await deps.repos.users.create({ username, passwordHash: await hashPassword(password) });
-    } catch (err) {
-      if (err instanceof DuplicateUsernameError) return fail('このユーザー名は使用できません。');
-      throw err;
+    // 原子的 first-run 作成: 既にユーザーがいれば null(並行 POST でも1件のみ成立)。
+    const created = await deps.repos.users.createInitial({
+      username,
+      passwordHash: await hashPassword(password),
+    });
+    if (created === null) {
+      return c.text('setup already completed', 403);
     }
     return c.redirect('/login?created=1', 303);
   });

@@ -71,6 +71,12 @@ export interface ArticleRepository {
 export interface UserRepository {
   /** username 重複は DuplicateUsernameError。 */
   create(input: NewUser): Promise<User>;
+  /**
+   * 初回セットアップ専用の原子的作成(PT-001 対策)。
+   * users が空のときだけ作成して User を返し、既に1件でも存在すれば作成せず null。
+   * count() → create() の TOCTOU をなくし、並行 first-run でも1件しか作らせない。
+   */
+  createInitial(input: NewUser): Promise<User | null>;
   getById(id: string): Promise<User | null>;
   getByUsername(username: string): Promise<User | null>;
   /** 初回セットアップ(/setup)の開放判定に使う。 */
@@ -94,6 +100,21 @@ export interface OAuthClientRepository {
   getById(clientId: string): Promise<OAuthClient | null>;
   /** DCR が無認証のため、資源枯渇対策の登録上限チェックに使う。 */
   count(): Promise<number>;
+  /**
+   * PT-002 対策: createdAt < cutoff かつ一度もトークンを発行していない
+   * (oauth_tokens から参照されていない)クライアントを削除し、削除件数を返す。
+   * 無認証 DCR による登録枠の永続的枯渇を、未使用登録の自動回収で緩和する。
+   * 正規クライアントは初回フローでトークンを得るため対象にならない。
+   */
+  deleteUnusedBefore(cutoff: Date): Promise<number>;
+  /**
+   * PT-002 対策(低レート再登録によるバイパス封じ): 未使用(トークン未発行)の
+   * クライアントのうち最古の1件だけを削除し、削除できたら true を返す。
+   * 登録枠が満杯でも、この「未使用の追い出し」により正規クライアントの新規登録を
+   * 常に通す(使用中=トークン発行済みクライアントは決して追い出さない)。
+   * 追い出せる未使用クライアントが1件も無い(全て使用中)場合のみ false。
+   */
+  deleteOldestUnused(): Promise<boolean>;
 }
 
 /** 認可コード(one-time)。 */

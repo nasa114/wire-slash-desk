@@ -25,6 +25,13 @@ export interface AppConfig {
    * /mcp は静的 Bearer のみ受け付ける(従来動作)。
    */
   oauthIssuerUrl: string | undefined;
+  /**
+   * 初回セットアップ(/setup)を保護する任意のワンタイムトークン(PT-001 対策)。
+   * 設定時は /setup フォームにこのトークンの入力を要求し、一致した場合のみ
+   * 管理ユーザー作成を許可する。未設定なら従来どおりトークンなしで開放する
+   * (公開網へは信頼できる状態になるまで晒さない運用が前提)。
+   */
+  setupToken: string | undefined;
   nodeEnv: string;
 }
 
@@ -103,13 +110,38 @@ function validateOAuthIssuerUrl(raw: string): string {
   return url.href;
 }
 
+/**
+ * PT-003(直接egress構成の fail-closed)。本番(NODE_ENV=production)で egress
+ * プロキシを信頼しない=アプリが直接インターネットへ出る構成は、DNS rebinding
+ * TOCTOU(docs/004 §1)の余地が残る。既定では起動を拒否し、リスクを理解した
+ * 上で直接egressを選ぶ場合のみ ALLOW_DIRECT_EGRESS=true で明示的にオプトアウト
+ * させる(fail closed)。開発環境や proxy 信頼構成では何もしない。
+ */
+export function validateDirectEgressInProduction(
+  env: NodeJS.ProcessEnv,
+  nodeEnv: string,
+  trustEgressProxy: boolean,
+): void {
+  if (nodeEnv !== 'production' || trustEgressProxy) return;
+  if (readString(env, 'ALLOW_DIRECT_EGRESS') === 'true') return;
+  throw new ConfigError(
+    'refusing to start: NODE_ENV=production without an egress proxy (TRUST_EGRESS_PROXY=true) ' +
+      'leaves the SSRF guard exposed to DNS rebinding. Route egress through the proxy, or set ' +
+      'ALLOW_DIRECT_EGRESS=true to explicitly accept the risk of direct egress.',
+  );
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const portRaw = readString(env, 'PORT');
   const port = portRaw !== undefined ? Number.parseInt(portRaw, 10) : 3000;
   // 'true' のみを有効とみなす。それ以外(未設定・'false'・'1' など)は false。
   const trustEgressProxy = readString(env, 'TRUST_EGRESS_PROXY') === 'true';
   validateEgressProxyTrust(env, trustEgressProxy);
-  const nodeEnv = readString(env, 'NODE_ENV') ?? 'development';
+  // 大小差での取り違えを避けるため小文字に正規化する('Production' 等でも本番判定を
+  // 取りこぼさない)。これで fail-closed(直接egress)と Secure Cookie の本番判定が
+  // 一貫して働く(PT-003 レビュー指摘)。
+  const nodeEnv = (readString(env, 'NODE_ENV') ?? 'development').toLowerCase();
+  validateDirectEgressInProduction(env, nodeEnv, trustEgressProxy);
   const cookieSecureRaw = readString(env, 'SESSION_COOKIE_SECURE');
   const cookieSecure =
     cookieSecureRaw !== undefined ? cookieSecureRaw === 'true' : nodeEnv === 'production';
@@ -126,6 +158,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustEgressProxy,
     cookieSecure,
     oauthIssuerUrl,
+    setupToken: readString(env, 'SETUP_TOKEN'),
     nodeEnv,
   };
 }

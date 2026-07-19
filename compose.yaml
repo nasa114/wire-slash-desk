@@ -106,7 +106,12 @@ services:
   # 内部/予約 IP 帯を宛先とする通信を拒否する(deploy/squid/squid.conf、denylist 方式)。
   # squid は「解決する主体=接続する主体」なので、DNS リバインディング(§1)も構造的に塞ぐ。
   squid:
-    image: ubuntu/squid:latest
+    # PT-004: SSRF 防御の要である squid は可変タグ(:latest)ではなく digest で固定する。
+    # 再デプロイ時に取得内容が変わらず、未レビューの更新混入を防ぐ。multi-arch
+    # (amd64/arm64、OCI ARM VM 対応)。2026-07-19 時点で :latest が指す 6.6-24.04_beta。
+    # 更新手順: `docker buildx imagetools inspect ubuntu/squid:<tag>` で digest を取得し、
+    # squid.conf 検査と SSRF 結合テストを通してからこの値を差し替える(セキュリティレビュー対象)。
+    image: ubuntu/squid:6.6-24.04_beta@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029
     restart: unless-stopped
     volumes:
       - ./deploy/squid/squid.conf:/etc/squid/squid.conf:ro

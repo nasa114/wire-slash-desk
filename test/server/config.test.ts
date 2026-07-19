@@ -18,11 +18,11 @@ test('loadConfig: 既定値(未設定env)', () => {
 });
 
 test('loadConfig: cookieSecure は NODE_ENV=production で true、SESSION_COOKIE_SECURE が優先', () => {
-  assert.equal(loadConfig({ NODE_ENV: 'production' }).cookieSecure, true);
-  assert.equal(
-    loadConfig({ NODE_ENV: 'production', SESSION_COOKIE_SECURE: 'false' }).cookieSecure,
-    false,
-  );
+  // production は PT-003 の直接egress fail-closed に掛かるため、この観点の検証では
+  // ALLOW_DIRECT_EGRESS=true で明示オプトアウトしておく(egress の是非は別テスト)。
+  const prod = { NODE_ENV: 'production', ALLOW_DIRECT_EGRESS: 'true' };
+  assert.equal(loadConfig(prod).cookieSecure, true);
+  assert.equal(loadConfig({ ...prod, SESSION_COOKIE_SECURE: 'false' }).cookieSecure, false);
   assert.equal(loadConfig({ SESSION_COOKIE_SECURE: 'true' }).cookieSecure, true);
   assert.equal(loadConfig({ SESSION_COOKIE_SECURE: '1' }).cookieSecure, false, '"true" 以外は false');
 });
@@ -53,6 +53,7 @@ test('loadConfig: 文字列値はそのままトリムして格納される', ()
     MCP_BEARER_TOKEN: 'mcp-token',
     COLLECTOR_TOKEN: 'collector-token',
     NODE_ENV: 'production',
+    ALLOW_DIRECT_EGRESS: 'true',
   });
   assert.equal(config.databaseUrl, 'postgresql://x');
   assert.equal(config.mcpBearerToken, 'mcp-token');
@@ -189,6 +190,47 @@ test('loadConfig: TRUST_EGRESS_PROXY=true + NODE_USE_ENV_PROXY 欠落で ConfigE
   );
 });
 
+// --- PT-003: 本番の直接egress fail-closed --------------------------------
+
+test('loadConfig: 本番 + 直接egress(proxy信頼なし)は既定で起動拒否', () => {
+  assert.throws(
+    () => loadConfig({ NODE_ENV: 'production' }),
+    ConfigError,
+    'production かつ TRUST_EGRESS_PROXY!=true は ConfigError',
+  );
+});
+
+test('loadConfig: 本番の直接egressは ALLOW_DIRECT_EGRESS=true で明示許可できる', () => {
+  const config = loadConfig({ NODE_ENV: 'production', ALLOW_DIRECT_EGRESS: 'true' });
+  assert.equal(config.trustEgressProxy, false);
+  assert.equal(config.nodeEnv, 'production');
+});
+
+test('loadConfig: 本番 + egress proxy 構成なら拒否しない', () => {
+  const config = loadConfig({
+    NODE_ENV: 'production',
+    TRUST_EGRESS_PROXY: 'true',
+    HTTPS_PROXY: 'http://squid:3128',
+    HTTP_PROXY: 'http://squid:3128',
+    NODE_USE_ENV_PROXY: '1',
+  });
+  assert.equal(config.trustEgressProxy, true);
+});
+
+test('loadConfig: development の直接egressは従来どおり許可(拒否しない)', () => {
+  const config = loadConfig({ NODE_ENV: 'development' });
+  assert.equal(config.trustEgressProxy, false);
+});
+
+test('loadConfig: NODE_ENV の大小差でも本番判定を取りこぼさない(fail-closed 堅牢化)', () => {
+  // 'Production' でも本番扱いになり、直接egressは拒否される。
+  assert.throws(() => loadConfig({ NODE_ENV: 'Production' }), ConfigError);
+  // 明示オプトアウトすれば起動でき、nodeEnv は小文字正規化される。
+  const config = loadConfig({ NODE_ENV: 'PRODUCTION', ALLOW_DIRECT_EGRESS: 'true' });
+  assert.equal(config.nodeEnv, 'production');
+  assert.equal(config.cookieSecure, true, '大小差でも Secure Cookie が有効になる');
+});
+
 // --- buildUserAgent -----------------------------------------------------
 
 test('buildUserAgent: 連絡先ありなし', () => {
@@ -223,4 +265,12 @@ test('loadConfig: OAUTH_ISSUER_URL は https、localhost のみ http 可', () =>
   assert.throws(() => loadConfig({ OAUTH_ISSUER_URL: 'not a url' }), ConfigError);
   assert.throws(() => loadConfig({ OAUTH_ISSUER_URL: 'https://x.example/?a=1' }), ConfigError);
   assert.throws(() => loadConfig({ OAUTH_ISSUER_URL: 'https://x.example/#frag' }), ConfigError);
+});
+
+// --- SETUP_TOKEN (PT-001) -----------------------------------------------
+
+test('loadConfig: SETUP_TOKEN は設定時のみ値、未設定/空白は undefined', () => {
+  assert.equal(loadConfig({}).setupToken, undefined);
+  assert.equal(loadConfig({ SETUP_TOKEN: '   ' }).setupToken, undefined);
+  assert.equal(loadConfig({ SETUP_TOKEN: 's3cret' }).setupToken, 's3cret');
 });

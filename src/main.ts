@@ -78,6 +78,7 @@ async function main(): Promise<void> {
     trustEgressProxy: config.trustEgressProxy,
     cookieSecure: config.cookieSecure,
     ...(config.oauthIssuerUrl !== undefined ? { oauthIssuerUrl: config.oauthIssuerUrl } : {}),
+    ...(config.setupToken !== undefined ? { setupToken: config.setupToken } : {}),
     userAgent,
   });
 

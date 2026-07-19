@@ -28,6 +28,8 @@ export interface AppDeps {
   trustEgressProxy?: boolean;
   /** セッション Cookie に Secure 属性を付ける(TLS 配下で true)。既定 false。 */
   cookieSecure?: boolean;
+  /** 初回セットアップを保護する任意トークン(PT-001)。未設定なら従来どおり無保護。 */
+  setupToken?: string;
   /**
    * MCP OAuth 2.1(T4-2)の issuer URL(例: https://reader.example)。
    * 指定時のみ /authorize /token /register /revoke と well-known メタデータが
@@ -177,6 +179,7 @@ export function createApp(deps: AppDeps): Server {
   const webApp = createWebApp({
     repos: deps.repos,
     cookieSecure: deps.cookieSecure ?? false,
+    ...(deps.setupToken !== undefined ? { setupToken: deps.setupToken } : {}),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
     ...(oauthProvider !== undefined ? { oauthProvider } : {}),
   });

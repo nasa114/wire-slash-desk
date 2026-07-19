@@ -58,6 +58,29 @@ export class PgOAuthClientRepository implements OAuthClientRepository {
     const result = await this.pool.query<{ count: string }>(`select count(*) from oauth_clients`);
     return Number(result.rows[0]?.count ?? 0);
   }
+
+  async deleteUnusedBefore(cutoff: Date): Promise<number> {
+    const result = await this.pool.query(
+      `delete from oauth_clients c
+        where c.created_at < $1
+          and not exists (select 1 from oauth_tokens t where t.client_id = c.client_id)`,
+      [cutoff],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  async deleteOldestUnused(): Promise<boolean> {
+    const result = await this.pool.query(
+      `delete from oauth_clients
+        where client_id = (
+          select c.client_id from oauth_clients c
+           where not exists (select 1 from oauth_tokens t where t.client_id = c.client_id)
+           order by c.created_at asc
+           limit 1
+        )`,
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
 }
 
 export class PgOAuthCodeRepository implements OAuthCodeRepository {

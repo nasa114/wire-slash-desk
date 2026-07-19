@@ -48,6 +48,38 @@ export class MemoryOAuthClientRepository implements OAuthClientRepository {
   async count(): Promise<number> {
     return this.store.oauthClients.size;
   }
+
+  async deleteUnusedBefore(cutoff: Date): Promise<number> {
+    const usedClientIds = this.usedClientIds();
+    let deleted = 0;
+    for (const [clientId, client] of this.store.oauthClients) {
+      if (client.createdAt.getTime() < cutoff.getTime() && !usedClientIds.has(clientId)) {
+        this.store.oauthClients.delete(clientId);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
+
+  async deleteOldestUnused(): Promise<boolean> {
+    const usedClientIds = this.usedClientIds();
+    let oldest: OAuthClient | null = null;
+    for (const client of this.store.oauthClients.values()) {
+      if (usedClientIds.has(client.clientId)) continue;
+      if (oldest === null || client.createdAt.getTime() < oldest.createdAt.getTime()) {
+        oldest = client;
+      }
+    }
+    if (oldest === null) return false;
+    this.store.oauthClients.delete(oldest.clientId);
+    return true;
+  }
+
+  private usedClientIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const token of this.store.oauthTokens.values()) ids.add(token.clientId);
+    return ids;
+  }
 }
 
 export class MemoryOAuthCodeRepository implements OAuthCodeRepository {

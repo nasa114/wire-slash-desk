@@ -76,6 +76,74 @@ export function runOAuthRepositoriesContract(impl: string, makeRepos: MakeRepos)
     }
   });
 
+  test(t('clients: deleteUnusedBefore は未使用かつ古いクライアントのみ回収する'), async () => {
+    const repos = await makeRepos();
+    try {
+      const user = await makeUser(repos);
+      // old-unused: 古い + トークンなし → 回収対象
+      await repos.oauthClients.create({ clientId: 'old-unused', clientInfo: {} });
+      // old-used: 古いがトークンあり → 残す
+      await repos.oauthClients.create({ clientId: 'old-used', clientInfo: {} });
+      await repos.oauthTokens.create(newToken('old-used', user.id));
+      // new-unused: トークンなしだが新しい → 残す
+      await repos.oauthClients.create({ clientId: 'new-unused', clientInfo: {} });
+
+      // cutoff より前に作られたことにするため、cutoff を「今より十分未来」にして
+      // old-unused / old-used を古い扱いにする。new-unused も作成済みだが、
+      // used 判定と cutoff の両方で残るのは old-used のみを期待…ではなく、
+      // ここでは cutoff を全件の createdAt より後にして「使用中のみ残る」を検証する。
+      const cutoff = new Date(Date.now() + 60_000);
+      const deleted = await repos.oauthClients.deleteUnusedBefore(cutoff);
+      assert.equal(deleted, 2, 'old-unused と new-unused が回収される(使用中は残る)');
+      assert.notEqual(await repos.oauthClients.getById('old-used'), null);
+      assert.equal(await repos.oauthClients.getById('old-unused'), null);
+      assert.equal(await repos.oauthClients.getById('new-unused'), null);
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('clients: deleteOldestUnused は最古の未使用を1件だけ削除し、使用中は残す'), async () => {
+    const repos = await makeRepos();
+    try {
+      const user = await makeUser(repos);
+      // 作成順 = createdAt 昇順。older-unused が最古。
+      await repos.oauthClients.create({ clientId: 'older-unused', clientInfo: {} });
+      await repos.oauthClients.create({ clientId: 'used', clientInfo: {} });
+      await repos.oauthTokens.create(newToken('used', user.id));
+      await repos.oauthClients.create({ clientId: 'newer-unused', clientInfo: {} });
+
+      // 1回目: 最古の未使用 older-unused のみ削除。
+      assert.equal(await repos.oauthClients.deleteOldestUnused(), true);
+      assert.equal(await repos.oauthClients.getById('older-unused'), null);
+      assert.notEqual(await repos.oauthClients.getById('newer-unused'), null);
+      assert.notEqual(await repos.oauthClients.getById('used'), null);
+
+      // 2回目: 残る未使用 newer-unused を削除。
+      assert.equal(await repos.oauthClients.deleteOldestUnused(), true);
+      assert.equal(await repos.oauthClients.getById('newer-unused'), null);
+
+      // 未使用が尽きたら false(使用中の used は決して追い出さない)。
+      assert.equal(await repos.oauthClients.deleteOldestUnused(), false);
+      assert.notEqual(await repos.oauthClients.getById('used'), null);
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('clients: deleteUnusedBefore は cutoff より新しいクライアントを残す'), async () => {
+    const repos = await makeRepos();
+    try {
+      await repos.oauthClients.create({ clientId: 'fresh', clientInfo: {} });
+      // cutoff を過去にすると、今作った fresh は cutoff より新しいので残る。
+      const deleted = await repos.oauthClients.deleteUnusedBefore(new Date(Date.now() - 60_000));
+      assert.equal(deleted, 0);
+      assert.notEqual(await repos.oauthClients.getById('fresh'), null);
+    } finally {
+      await repos.close();
+    }
+  });
+
   test(t('clients: clientId 重複は DuplicateOAuthClientError'), async () => {
     const repos = await makeRepos();
     try {

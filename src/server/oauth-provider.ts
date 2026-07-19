@@ -39,6 +39,12 @@ const PENDING_TTL_MS = 10 * 60_000;
 const MAX_PENDING = 100;
 /** DCR で登録できるクライアント総数の上限(無認証登録の資源枯渇対策)。 */
 const MAX_CLIENTS = 100;
+/**
+ * 登録後この期間トークンを一度も発行していないクライアントは、次の登録時に回収する
+ * (PT-002: 無認証 DCR による登録枠の永続的枯渇を、未使用登録の自動回収で緩和)。
+ * 正規クライアントは登録直後の初回フローでトークンを得るため対象にならない。
+ */
+const CLIENT_UNUSED_TTL_MS = 24 * 60 * 60_000;
 
 /** 付与するスコープは単一固定。要求スコープは無視して常にこれを与える。 */
 export const OAUTH_SCOPES = ['mcp'];
@@ -87,6 +93,7 @@ export class RssOAuthProvider implements OAuthServerProvider {
 
   get clientsStore(): OAuthRegisteredClientsStore {
     const repos = this.repos;
+    const now = this.now;
     return {
       async getClient(clientId: string): Promise<OAuthClientInformationFull | undefined> {
         const client = await repos.oauthClients.getById(clientId);
@@ -96,8 +103,17 @@ export class RssOAuthProvider implements OAuthServerProvider {
       async registerClient(
         client: OAuthClientInformationFull,
       ): Promise<OAuthClientInformationFull> {
+        // まず TTL 超過の未使用登録を掃除(枠を時間で自己回復)。
+        await repos.oauthClients.deleteUnusedBefore(new Date(now().getTime() - CLIENT_UNUSED_TTL_MS));
+        // それでも満杯なら、未使用(トークン未発行)クライアントを最古から1件追い出して
+        // 枠を空ける。これにより無認証 DCR を新鮮なクライアントで埋め続ける低レート攻撃
+        // (PT-002 のバイパス)でも、正規クライアントの登録は常に通る。追い出せる未使用が
+        // 皆無=全て使用中のときだけ full で拒否する(使用中クライアントは保護)。
         if ((await repos.oauthClients.count()) >= MAX_CLIENTS) {
-          throw new InvalidClientMetadataError('client registry is full');
+          const evicted = await repos.oauthClients.deleteOldestUnused();
+          if (!evicted) {
+            throw new InvalidClientMetadataError('client registry is full');
+          }
         }
         await repos.oauthClients.create({
           clientId: client.client_id,

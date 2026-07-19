@@ -530,11 +530,20 @@ export function consentErrorBody(): string {
 <p class="note">MCP クライアント側から接続をやり直してください。</p>`;
 }
 
-export function setupBody(input: { error?: string; username?: string } = {}): string {
+export function setupBody(
+  input: { error?: string; username?: string; tokenRequired?: boolean } = {},
+): string {
+  const tokenField = input.tokenRequired
+    ? `<div class="field">
+    <label for="setup-token">セットアップトークン <span class="hint">(SETUP_TOKEN)</span></label>
+    <input id="setup-token" type="password" name="setup_token" required autocomplete="off">
+  </div>
+`
+    : '';
   return `${input.error ? `<div class="banner error" role="alert">${escapeHtml(input.error)}</div>` : ''}
 <p class="note note-lead">初回セットアップ: 管理ユーザーを作成してください。</p>
 <form method="post" action="/setup">
-  <div class="field">
+  ${tokenField}<div class="field">
     <label for="username">ユーザー名 <span class="hint">(英数と ._- のみ)</span></label>
     <input id="username" type="text" name="username" required maxlength="64" pattern="[A-Za-z0-9._\\-]+" autocomplete="username" value="${escapeHtml(input.username ?? '')}" autofocus>
   </div>
