@@ -15,6 +15,15 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     --mount=type=cache,id=corepack,target=/root/.cache/node/corepack \
     pnpm install --store-dir=/pnpm/store --frozen-lockfile --ignore-scripts --prod
 
+# バージョン情報の生成: .git からコミットハッシュを読み(loadBuildInfo の .git
+# フォールバックを流用)、build-info.json だけを最終イメージへ渡す。
+# .git 本体は最終イメージに含めない。build args なしの素の
+# `docker compose build` でもコミットハッシュが自動で焼き込まれる。
+FROM node:24-slim AS gitinfo
+WORKDIR /repo
+COPY . .
+RUN node --input-type=module -e "import { writeFileSync } from 'node:fs'; const { loadBuildInfo } = await import('/repo/src/server/build-info.ts'); const { commit } = loadBuildInfo({}, '/repo'); writeFileSync('/repo/build-info.json', JSON.stringify({ commit, builtAt: new Date().toISOString() }));"
+
 FROM node:24-slim
 ENV NODE_ENV=production
 WORKDIR /app
@@ -22,9 +31,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY migrations ./migrations
 COPY src ./src
-# バージョン情報の焼き込み(イメージに .git を含めないため build-arg で受ける。
-# compose.yaml の build.args 参照)。認証済み UI のフッターと
-# GET /internal/version(X-Collector-Token 必須)で確認できる。
+# gitinfo ステージが生成した build-info.json を渡す(.git 本体は含めない)。
+# 認証済み UI のフッターと GET /internal/version(X-Collector-Token 必須)で確認できる。
+COPY --from=gitinfo /repo/build-info.json ./build-info.json
+# 任意のオーバーライド(.git の無いコンテキストでのビルド用)。env は
+# build-info.json より優先される(src/server/build-info.ts の解決順参照)。
 # ARG は値が変わるとこの行以降のキャッシュだけを無効化するので最後に置く。
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=

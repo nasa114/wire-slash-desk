@@ -16,3 +16,5 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+# Docker gitinfo ステージの生成物(誤ってローカル実行した場合の残骸をコミットさせない)
+build-info.json

@@ -1,6 +1,7 @@
 # ビルドコンテキストに必要なのは package.json / pnpm-lock.yaml /
-# pnpm-workspace.yaml / .npmrc / src / migrations のみ。それ以外は除外する。
-.git
+# pnpm-workspace.yaml / .npmrc / src / migrations / .git のみ。それ以外は除外する。
+# .git は gitinfo ステージ(Dockerfile 参照)がコミットハッシュを読むために必要で、
+# 最終イメージには含めない(build-info.json だけを渡す)。
 .github
 .devcontainer
 .claude
@@ -19,3 +20,5 @@ test
 Dockerfile
 compose.yaml
 .dockerignore
+# 残骸の build-info.json がコンテキスト経由で焼き込まれるのを防ぐ(gitinfo ステージ内で生成する)
+build-info.json

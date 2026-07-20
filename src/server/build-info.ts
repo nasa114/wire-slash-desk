@@ -59,6 +59,31 @@ function readGitCommit(rootDir: string): string | null {
   return null;
 }
 
+/**
+ * rootDir/build-info.json を読む。Docker ビルドの gitinfo ステージが生成する
+ * (Dockerfile 参照)ファイルで、.git を最終イメージに含めずにコミットハッシュと
+ * ビルド日時を焼き込むためのもの。存在しない・JSON として壊れている・フィールドの
+ * 型や形式が不正な場合は該当フィールドを null として次の手段へフォールバックする
+ * (起動は止めない)。
+ */
+function readBuildInfoFile(rootDir: string): { commit: string | null; builtAt: string | null } {
+  const none = { commit: null, builtAt: null };
+  const raw = tryRead(join(rootDir, 'build-info.json'));
+  if (raw === null) return none;
+  try {
+    const parsed = JSON.parse(raw) as { commit?: unknown; builtAt?: unknown };
+    const commit =
+      typeof parsed.commit === 'string' && ENV_COMMIT_RE.test(parsed.commit.trim().toLowerCase())
+        ? parsed.commit.trim().toLowerCase()
+        : null;
+    const builtAt =
+      typeof parsed.builtAt === 'string' && parsed.builtAt !== '' ? parsed.builtAt : null;
+    return { commit, builtAt };
+  } catch {
+    return none;
+  }
+}
+
 function readPackageVersion(rootDir: string): string | null {
   const raw = tryRead(join(rootDir, 'package.json'));
   if (raw === null) return null;
@@ -75,24 +100,27 @@ const DEFAULT_ROOT_DIR = fileURLToPath(new URL('../../', import.meta.url));
 
 /**
  * ビルド情報を解決する。優先順位:
- * - commit: env GIT_COMMIT(Docker ビルド時に焼き込み)→ .git(開発環境)→ 'unknown'
+ * - commit: env GIT_COMMIT(任意オーバーライド)→ rootDir/build-info.json
+ *   (Docker ビルドの gitinfo ステージが生成)→ .git(開発環境)→ 'unknown'
  * - version: rootDir/package.json → '0.0.0'
- * - builtAt: env BUILD_TIME(空・未設定なら省略)
+ * - builtAt: env BUILD_TIME → build-info.json の builtAt(いずれも空・未設定なら省略)
  */
 export function loadBuildInfo(
   env: NodeJS.ProcessEnv = process.env,
   rootDir: string = DEFAULT_ROOT_DIR,
 ): BuildInfo {
+  const fileInfo = readBuildInfoFile(rootDir);
   const envCommit = env['GIT_COMMIT']?.trim().toLowerCase();
   const commit =
     envCommit !== undefined && ENV_COMMIT_RE.test(envCommit)
       ? envCommit
-      : (readGitCommit(rootDir) ?? 'unknown');
+      : (fileInfo.commit ?? readGitCommit(rootDir) ?? 'unknown');
   const version = readPackageVersion(rootDir) ?? UNKNOWN_BUILD_INFO.version;
-  const builtAt = env['BUILD_TIME']?.trim();
+  const envBuiltAt = env['BUILD_TIME']?.trim();
+  const builtAt = envBuiltAt !== undefined && envBuiltAt !== '' ? envBuiltAt : fileInfo.builtAt;
   return {
     version,
     commit,
-    ...(builtAt !== undefined && builtAt !== '' ? { builtAt } : {}),
+    ...(builtAt !== null && builtAt !== undefined ? { builtAt } : {}),
   };
 }
