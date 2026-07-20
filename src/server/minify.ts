@@ -6,8 +6,10 @@
  * ブラウザへ配信する応答からコメントを除去する(web.ts の loadAsset が初回のみ
  * 適用してキャッシュする)。ソースファイル自体は可読性のためコメントを保持する。
  *
- * 入力はサーバー自身の src/server/assets/ 配下のファイルに限る(minifyJs は構文検証に
- * new Function を使うため、ユーザー由来コンテンツをこのモジュールへ通してはならない)。
+ * minifyCss / minifyJs の入力はサーバー自身の src/server/assets/ 配下のファイルに限る
+ * (minifyJs は構文検証に new Function を使うため、ユーザー由来コンテンツを通してはならない)。
+ * minifyHtml のみ例外で、エスケープ済みユーザー入力を含む本番 HTML レスポンスに毎回適用する
+ * (コード実行を伴わない走査のみで、壊れた入力でも例外を投げない)。
  *
  * 依存を増やさないための自前実装なので、変換は保守的に倒す:
  * - 文字列・url()・正規表現リテラルの中身は一切改変しない
@@ -105,6 +107,111 @@ export function minifyCss(css: string): string {
     out.push(ch);
     i++;
   }
+  return out.join('');
+}
+
+/** 中身を一切改変しない要素。空白が意味を持つ(pre/textarea)か、HTML の空白規則が適用されない(script/style)。 */
+const RAW_TEXT_TAGS = new Set(['script', 'style', 'textarea', 'pre']);
+
+/**
+ * HTML の minify: コメント除去 + タグ外テキストの連続空白を半角スペース1つへ圧縮。
+ * 空白は「除去」ではなく「1つに圧縮」する — HTML の空白折りたたみでは語間の空白が
+ * 描画に残るため、除去するとインライン要素間の見た目が変わってしまう。
+ *
+ * 本番コンテンツ(エスケープ済みユーザー入力を含む)が毎リクエスト通るため、
+ * 壊れた入力(閉じられない引用符・コメント・タグ)でも例外を投げず走査を終える。
+ * minifyJs と違い構文検証は行わない(HTML は多少崩れてもブラウザが解釈できる)。
+ */
+export function minifyHtml(html: string): string {
+  const out: string[] = [];
+  // 閉じタグ検索を大文字小文字非依存にするため、全体を一度だけ小文字化しておく
+  // (raw 要素ごとに toLowerCase すると O(n²) になり得る)。
+  const lower = html.toLowerCase();
+  const n = html.length;
+  let i = 0;
+  let pendingSpace = false;
+  const flushSpace = (): void => {
+    if (!pendingSpace) return;
+    pendingSpace = false;
+    out.push(' ');
+  };
+  while (i < n) {
+    const ch = html[i] as string;
+    if (ch !== '<') {
+      if (/\s/.test(ch)) {
+        pendingSpace = true;
+      } else {
+        flushSpace();
+        out.push(ch);
+      }
+      i++;
+      continue;
+    }
+    // コメントは丸ごと落とす。描画に寄与しないため、前後の空白圧縮にも参加させない
+    // (`a<!-- -->b` は元々 `ab` と描画されるので、空白を足すと意味が変わる)。
+    if (html.startsWith('<!--', i)) {
+      const end = html.indexOf('-->', i + 4);
+      // 閉じられていないコメントは末尾までコメント(ブラウザの解釈に合わせる)。
+      i = end === -1 ? n : end + 3;
+      continue;
+    }
+    const next = html[i + 1] ?? '';
+    if (!/[a-zA-Z!/]/.test(next)) {
+      // タグを構成しない裸の `<` はテキストとして写す(壊れた入力でも走査を止めない)。
+      flushSpace();
+      out.push(ch);
+      i++;
+      continue;
+    }
+    flushSpace();
+    out.push('<');
+    i++;
+    const nameStart = i;
+    while (i < n && /[a-zA-Z0-9-]/.test(html[i] as string)) i++;
+    // `<!doctype ...>` や閉じタグは name が空になり raw 要素判定を素通りする(それでよい)。
+    const name = lower.slice(nameStart, i);
+    out.push(html.slice(nameStart, i));
+    // タグ内部: 引用符付き属性値は改変せず、引用符外の連続空白だけ 1 つへ圧縮する。
+    let selfClosing = false;
+    let tagSpace = false;
+    while (i < n) {
+      const c = html[i] as string;
+      if (c === '"' || c === "'") {
+        if (tagSpace) {
+          out.push(' ');
+          tagSpace = false;
+        }
+        i = copyString(html, i, out);
+        selfClosing = false;
+        continue;
+      }
+      if (/\s/.test(c)) {
+        tagSpace = true;
+        i++;
+        continue;
+      }
+      if (tagSpace) {
+        out.push(' ');
+        tagSpace = false;
+      }
+      out.push(c);
+      i++;
+      if (c === '>') break;
+      selfClosing = c === '/';
+    }
+    // 注意: HTML 仕様では raw 要素に自己閉鎖形式(<script/> 等)は存在しない(開始タグ扱い)。
+    // ここでは selfClosing を尊重して raw 扱いを外すため、テンプレート側は script/style/
+    // textarea/pre を自己閉鎖形式で書かないこと(書くとブラウザとの解釈が乖離する)。
+    if (selfClosing || !RAW_TEXT_TAGS.has(name)) continue;
+    // raw 要素の中身は閉じタグまで一切改変しない。閉じタグが無い壊れた入力は
+    // 末尾まで raw として写して終える(例外にしない)。
+    const close = lower.indexOf(`</${name}`, i);
+    const end = close === -1 ? n : close;
+    out.push(html.slice(i, end));
+    i = end;
+  }
+  // 末尾の空白も 1 つに圧縮して出力する(捨てると 2 回目の適用で結果が変わり冪等でなくなる)。
+  flushSpace();
   return out.join('');
 }
 

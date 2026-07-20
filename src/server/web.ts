@@ -18,7 +18,7 @@ import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
 import { OAUTH_SCOPES, type RssOAuthProvider } from './oauth-provider.ts';
 import type { BuildInfo } from './build-info.ts';
-import { minifyCss, minifyJs } from './minify.ts';
+import { minifyCss, minifyHtml, minifyJs } from './minify.ts';
 import {
   articlesBody,
   authLayout,
@@ -281,7 +281,8 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
 
   const html = (c: Context, body: string, status = 200): Response => {
     c.header('cache-control', 'no-store');
-    return c.html(body, status as 200);
+    // 全 HTML レスポンス共通の出口で minify(実装コメント等の情報露出低減。src/server/minify.ts 参照)。
+    return c.html(minifyHtml(body), status as 200);
   };
 
   app.use(
