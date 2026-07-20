@@ -18,6 +18,7 @@ import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
 import { OAUTH_SCOPES, type RssOAuthProvider } from './oauth-provider.ts';
 import type { BuildInfo } from './build-info.ts';
+import { minifyCss, minifyJs } from './minify.ts';
 import {
   articlesBody,
   authLayout,
@@ -77,6 +78,10 @@ function loadAsset(name: string): string {
   let content = assetCache.get(name);
   if (content === undefined) {
     content = readFileSync(new URL(`./assets/${name}`, import.meta.url), 'utf8');
+    // 配信前に minify(実装コメント等の情報露出低減。src/server/minify.ts 参照)。
+    // ソースはコメント付きのまま保ち、初回ロード時に1回だけ変換してキャッシュする。
+    if (name.endsWith('.css')) content = minifyCss(content);
+    else if (name.endsWith('.js')) content = minifyJs(content);
     assetCache.set(name, content);
   }
   return content;
