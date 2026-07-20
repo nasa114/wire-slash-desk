@@ -1,4 +1,5 @@
 import type { Article, Feed } from '../domain/types.ts';
+import type { BuildInfo } from './build-info.ts';
 
 /**
  * Wire Desk のビュー層(HTML 文字列レンダリング)。
@@ -96,6 +97,8 @@ export interface PageContext {
   /** ログイン中のユーザー名(ツールバー表示・ログアウトボタン用)。 */
   username: string;
   query?: { q: string; date: string };
+  /** バージョン・ビルド情報。指定時のみフッターに表示する(認証済みページ限定)。 */
+  buildInfo?: BuildInfo;
 }
 
 function htmlDocument(title: string, body: string, extraScripts = ''): string {
@@ -113,6 +116,17 @@ function htmlDocument(title: string, body: string, extraScripts = ''): string {
 ${body}
 </body>
 </html>`;
+}
+
+/**
+ * フッター用のバージョン表記(例: `v0.1.0 · ba5190f6a2c1`)。
+ * commit は視認性のため 12 桁に短縮し、builtAt は title 属性で補足する。
+ */
+function buildInfoSpan(info: BuildInfo | undefined): string {
+  if (info === undefined) return '';
+  const commitShort = info.commit === 'unknown' ? 'unknown' : info.commit.slice(0, 12);
+  const title = info.builtAt !== undefined ? ` title="built at ${escapeHtml(info.builtAt)}"` : '';
+  return `\n  <span class="build-info"${title}>v${escapeHtml(info.version)} · <code>${escapeHtml(commitShort)}</code></span>`;
 }
 
 export function layout(title: string, ctx: PageContext, body: string): string {
@@ -147,7 +161,7 @@ export function layout(title: string, ctx: PageContext, body: string): string {
 </header>
 ${body}
 <footer class="colophon">
-  <span>時刻はすべて日本時間(JST)</span>
+  <span>時刻はすべて日本時間(JST)</span>${buildInfoSpan(ctx.buildInfo)}
 </footer>
 </div>`,
     '\n<script src="/assets/clock.js" defer></script>',

@@ -4,6 +4,14 @@
 #   1. リポジトリ直下に .env を作成(必須: POSTGRES_PASSWORD, MCP_BEARER_TOKEN, COLLECTOR_TOKEN)
 #   2. docker compose build && docker compose up -d(docker compose up -d --build でも同じ)
 #      ビルドされるのは app のみで、migrate は同じイメージ(personal-rss-reader-app)を参照する。
+#      バージョン情報(コミットハッシュ等)をイメージに焼き込むには次の形でビルドする:
+#        GIT_COMMIT=$(git rev-parse HEAD) BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+#          docker compose up -d --build
+#      デプロイ後の確認(VM 上から。ブラウザには公開されない)。トークンをシェル履歴に
+#      残さないよう .env から読み込んで渡す:
+#        set -a && . ./.env && set +a
+#        curl -H "X-Collector-Token: $COLLECTOR_TOKEN" http://127.0.0.1:3000/internal/version
+#      ログイン後の Web UI フッターにも v<version> · <commit 先頭12桁> が表示される。
 #      pnpm store は BuildKit の cache mount(Dockerfile 参照)としてビルドホストに残り、
 #      次回の docker compose build で再利用される(docker builder prune で消える)。
 #   3. 初回のみ、信頼できるネットワークから http://<host>:3000/ を開き /setup で管理ユーザーを作成
@@ -65,7 +73,13 @@ services:
       - internal
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # デプロイ後に「どのコードが動いているか」を確認するための焼き込み(Dockerfile 参照)。
+        # 冒頭コメントのビルドコマンド例のとおり、シェル環境変数で渡す。
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-}
     image: personal-rss-reader-app
     restart: unless-stopped
     ports:
