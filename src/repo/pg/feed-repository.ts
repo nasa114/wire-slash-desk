@@ -25,8 +25,8 @@ export class PgFeedRepository implements FeedRepository {
     assertValidInterval(interval);
     try {
       const result = await this.pool.query<FeedRow>(
-        `insert into feeds (name, feed_url, site_url, fetch_interval_minutes, translate, fulltext_allowed, enabled, tos_note)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)
+        `insert into feeds (name, feed_url, site_url, fetch_interval_minutes, translate, fulltext_allowed, enabled, tos_note, category)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          returning *`,
         [
           input.name,
@@ -37,6 +37,7 @@ export class PgFeedRepository implements FeedRepository {
           input.fulltextAllowed ?? false,
           input.enabled ?? true,
           input.tosNote ?? null,
+          input.category ?? null,
         ],
       );
       const row = result.rows[0];
@@ -112,6 +113,10 @@ export class PgFeedRepository implements FeedRepository {
     if (patch.tosNote !== undefined) {
       columns.push('tos_note');
       values.push(patch.tosNote);
+    }
+    if (patch.category !== undefined) {
+      columns.push('category');
+      values.push(patch.category);
     }
     columns.push('updated_at');
     values.push(new Date());

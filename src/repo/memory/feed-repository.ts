@@ -37,6 +37,7 @@ export class MemoryFeedRepository implements FeedRepository {
       fulltextAllowed: input.fulltextAllowed ?? false,
       enabled: input.enabled ?? true,
       tosNote: input.tosNote ?? null,
+      category: input.category ?? null,
       etag: null,
       lastModified: null,
       lastFetchedAt: null,
@@ -94,6 +95,7 @@ export class MemoryFeedRepository implements FeedRepository {
       fulltextAllowed: patch.fulltextAllowed ?? feed.fulltextAllowed,
       enabled: patch.enabled ?? feed.enabled,
       tosNote: patch.tosNote !== undefined ? patch.tosNote : feed.tosNote,
+      category: patch.category !== undefined ? patch.category : feed.category,
       updatedAt: new Date(),
     };
     this.store.feeds.set(id, updated);

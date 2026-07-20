@@ -19,6 +19,7 @@ export interface FeedRow {
   fulltext_allowed: boolean;
   enabled: boolean;
   tos_note: string | null;
+  category: string | null;
   etag: string | null;
   last_modified: string | null;
   last_fetched_at: Date | null;
@@ -37,6 +38,7 @@ export function mapFeedRow(row: FeedRow): Feed {
     fulltextAllowed: row.fulltext_allowed,
     enabled: row.enabled,
     tosNote: row.tos_note,
+    category: row.category,
     etag: row.etag,
     lastModified: row.last_modified,
     lastFetchedAt: row.last_fetched_at,

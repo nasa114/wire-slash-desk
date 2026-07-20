@@ -232,4 +232,70 @@ export function runFeedRepositoryContract(impl: string, makeRepos: MakeRepos): v
       await repos.close();
     }
   });
+
+  /* -------------------------------------------- category(配信元の分類) */
+
+  test(t('category: create 未指定なら null'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await repos.feeds.create({ name: 'A', feedUrl: 'https://cat.example.com/rss' });
+      assert.equal(feed.category, null);
+      const got = await repos.feeds.getById(feed.id);
+      assert.equal(got?.category, null);
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('category: create 時に指定した値が保存される'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await repos.feeds.create({
+        name: 'A',
+        feedUrl: 'https://cat.example.com/rss',
+        category: '技術',
+      });
+      assert.equal(feed.category, '技術');
+      const got = await repos.feeds.getById(feed.id);
+      assert.equal(got?.category, '技術');
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('category: update で変更でき、未指定の update では維持される'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await repos.feeds.create({
+        name: 'A',
+        feedUrl: 'https://cat.example.com/rss',
+        category: '技術',
+      });
+      const updated = await repos.feeds.update(feed.id, { category: 'ニュース' });
+      assert.equal(updated.category, 'ニュース');
+      assert.equal((await repos.feeds.getById(feed.id))?.category, 'ニュース');
+
+      // category を含まない patch では変更されない(Partial の意味論)
+      const renamed = await repos.feeds.update(feed.id, { name: 'B' });
+      assert.equal(renamed.category, 'ニュース', 'category 未指定の update では維持される');
+    } finally {
+      await repos.close();
+    }
+  });
+
+  test(t('category: update で null を渡すとクリアされる'), async () => {
+    const repos = await makeRepos();
+    try {
+      const feed = await repos.feeds.create({
+        name: 'A',
+        feedUrl: 'https://cat.example.com/rss',
+        category: '技術',
+      });
+      const cleared = await repos.feeds.update(feed.id, { category: null });
+      assert.equal(cleared.category, null);
+      assert.equal((await repos.feeds.getById(feed.id))?.category, null);
+    } finally {
+      await repos.close();
+    }
+  });
 }

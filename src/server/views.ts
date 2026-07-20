@@ -316,9 +316,11 @@ export function articlesBody(input: {
   q: string;
   date: string;
   feedId: string;
+  category: string;
 }): string {
   const feedsById = new Map(input.feeds.map((f) => [f.id, f]));
-  const hasFilter = input.q !== '' || input.date !== '' || input.feedId !== '';
+  const hasFilter =
+    input.q !== '' || input.date !== '' || input.feedId !== '' || input.category !== '';
   const parts: string[] = [];
   if (input.q !== '') parts.push(`「${escapeHtml(input.q)}」を含むタイトル`);
   if (input.date !== '') parts.push(`${escapeHtml(input.date)}(JST)公開`);
@@ -326,9 +328,25 @@ export function articlesBody(input: {
     const feed = feedsById.get(input.feedId);
     parts.push(`フィード: ${escapeHtml(feed?.name ?? input.feedId)}`);
   }
+  if (input.category !== '') parts.push(`カテゴリ: ${escapeHtml(input.category)}`);
   const note = hasFilter
     ? `${parts.join(' / ')} — ${input.articles.length}件`
     : `公開日時の新しい順(JST) — ${input.articles.length}件`;
+  // カテゴリごとの導線(チップ)。フィードにカテゴリが1つでも付いていれば表示する。
+  const categories = feedCategories(input.feeds);
+  const chips =
+    categories.length === 0
+      ? ''
+      : `<nav class="cat-chips" aria-label="カテゴリで絞り込み">
+        <a class="btn-small" href="/articles"${input.category === '' ? ' aria-current="true"' : ''}>すべて</a>
+        ${categories
+          .map(
+            (cat) =>
+              `<a class="btn-small" href="/articles?category=${escapeHtml(encodeURIComponent(cat))}"${cat === input.category ? ' aria-current="true"' : ''}>${escapeHtml(cat)}</a>`,
+          )
+          .join('\n        ')}
+      </nav>
+      `;
   const rows =
     input.articles.length === 0
       ? `<p class="empty">${hasFilter ? '該当する記事はありません。条件を変えて検索してください。' : '記事がまだありません。フィードを登録して収集を実行してください。'}</p>`
@@ -337,7 +355,7 @@ export function articlesBody(input: {
   <div class="col-main">
     <section class="panel">
       <h2>${hasFilter ? '検索結果' : '記事一覧'}</h2>
-      <p class="result-note">${note}</p>
+      ${chips}<p class="result-note">${note}</p>
       ${rows}
     </section>
   </div>
@@ -359,6 +377,7 @@ export interface FeedFormValues {
   fulltextAllowed: boolean;
   enabled: boolean;
   tosNote: string;
+  category: string;
 }
 
 export const EMPTY_FEED_FORM: FeedFormValues = {
@@ -370,6 +389,7 @@ export const EMPTY_FEED_FORM: FeedFormValues = {
   fulltextAllowed: false,
   enabled: true,
   tosNote: '',
+  category: '',
 };
 
 export function feedToFormValues(feed: Feed): FeedFormValues {
@@ -382,11 +402,27 @@ export function feedToFormValues(feed: Feed): FeedFormValues {
     fulltextAllowed: feed.fulltextAllowed,
     enabled: feed.enabled,
     tosNote: feed.tosNote ?? '',
+    category: feed.category ?? '',
   };
 }
 
-function feedFormFields(values: FeedFormValues): string {
+/** フィード群から重複を除いたカテゴリ一覧(表示順は五十音等のロケール順)。 */
+function feedCategories(feeds: Feed[]): string[] {
+  const set = new Set<string>();
+  for (const f of feeds) {
+    if (f.category !== null && f.category !== '') set.add(f.category);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+function feedFormFields(values: FeedFormValues, categoryOptions: string[] = []): string {
   const checked = (b: boolean) => (b ? ' checked' : '');
+  const datalist =
+    categoryOptions.length > 0
+      ? `\n<datalist id="category-options">\n${categoryOptions
+          .map((cat) => `<option value="${escapeHtml(cat)}"></option>`)
+          .join('\n')}\n</datalist>`
+      : '';
   return `<div class="field">
   <label for="feed-name">名前</label>
   <input id="feed-name" type="text" name="name" required maxlength="200" value="${escapeHtml(values.name)}">
@@ -402,6 +438,10 @@ function feedFormFields(values: FeedFormValues): string {
 <div class="field">
   <label for="interval">取得間隔(分) <span class="hint">最小15</span></label>
   <input id="interval" type="number" name="fetch_interval_minutes" required min="15" step="1" value="${escapeHtml(values.fetchIntervalMinutes)}">
+</div>
+<div class="field">
+  <label for="feed-category">カテゴリ <span class="hint">(任意。同じ名前で配信元をまとめる)</span></label>
+  <input id="feed-category" type="text" name="category" maxlength="100"${categoryOptions.length > 0 ? ' list="category-options"' : ''} value="${escapeHtml(values.category)}">${datalist}
 </div>
 <div class="check-row">
   <label><input type="checkbox" name="enabled"${checked(values.enabled)}> 有効(収集対象)</label>
@@ -421,10 +461,16 @@ export function feedsBody(input: {
   form?: FeedFormValues;
 }): string {
   const form = input.form ?? EMPTY_FEED_FORM;
+  const categories = feedCategories(input.feeds);
   const rows = input.feeds
     .map(
       (f) => `<tr>
 <td>${escapeHtml(f.name)}<div class="furl">${escapeHtml(f.feedUrl)}</div></td>
+<td>${
+        f.category === null
+          ? '—'
+          : `<a href="/articles?category=${escapeHtml(encodeURIComponent(f.category))}">${escapeHtml(f.category)}</a>`
+      }</td>
 <td><span class="flag ${f.enabled ? 'on' : 'off'}">${f.enabled ? '● 有効' : '○ 無効'}</span></td>
 <td><span class="flag ${f.fulltextAllowed ? 'on' : 'off'}">${f.fulltextAllowed ? '可' : '不可'}</span></td>
 <td class="c">${f.fetchIntervalMinutes}分</td>
@@ -447,7 +493,7 @@ ${input.notice ? `<div class="banner notice">${escapeHtml(input.notice)}</div>` 
 <h2>フィードを追加</h2>
 <p class="panel-note">RSS / Atom フィードの URL を登録すると次回の収集から対象になります</p>
 <form method="post" action="/feeds" class="form-grid">
-${feedFormFields(form)}
+${feedFormFields(form, categories)}
 <div class="form-actions"><button type="submit" class="btn">追加する</button></div>
 </form>
 </section>
@@ -456,9 +502,9 @@ ${feedFormFields(form)}
 <p class="panel-note">収集対象の情報源と規約フラグ</p>
 <div class="table-scroll">
 <table class="ftable">
-<thead><tr><th>名前 / URL</th><th>状態</th><th>本文取得</th><th>間隔</th><th>最終取得 (JST)</th><th>操作</th></tr></thead>
+<thead><tr><th>名前 / URL</th><th>カテゴリ</th><th>状態</th><th>本文取得</th><th>間隔</th><th>最終取得 (JST)</th><th>操作</th></tr></thead>
 <tbody>
-${rows || '<tr><td colspan="6" class="empty">フィードが未登録です</td></tr>'}
+${rows || '<tr><td colspan="7" class="empty">フィードが未登録です</td></tr>'}
 </tbody>
 </table>
 </div>
@@ -470,6 +516,8 @@ export function feedEditBody(input: {
   feed: Feed;
   error?: string;
   form?: FeedFormValues;
+  /** datalist に出す既存カテゴリ一覧(任意)。 */
+  categories?: string[];
 }): string {
   const form = input.form ?? feedToFormValues(input.feed);
   return `<main class="mt-22">
@@ -478,7 +526,7 @@ ${input.error ? `<div class="banner error" role="alert">${escapeHtml(input.error
 <h2>フィードを編集</h2>
 <p class="panel-note">${escapeHtml(input.feed.name)} — 最終取得: ${fmtDateTimeJst(input.feed.lastFetchedAt)}</p>
 <form method="post" action="/feeds/${escapeHtml(input.feed.id)}" class="form-grid">
-${feedFormFields(form)}
+${feedFormFields(form, input.categories ?? [])}
 <div class="form-actions">
   <button type="submit" class="btn">保存する</button>
   <a class="btn-small" href="/feeds">一覧へ戻る</a>

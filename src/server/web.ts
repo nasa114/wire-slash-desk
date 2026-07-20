@@ -112,6 +112,13 @@ async function listByJstDate(repos: Repositories, jstDate: string): Promise<Arti
     .sort((a, b) => (b.publishedAt?.getTime() ?? 0) - (a.publishedAt?.getTime() ?? 0));
 }
 
+/** 指定カテゴリのフィードの記事だけに絞る(visibleArticles と同じフィルタ方式)。 */
+function filterByCategory(articles: Article[], feeds: Feed[], category: string): Article[] {
+  if (category === '') return articles;
+  const ids = new Set(feeds.filter((f) => f.category === category).map((f) => f.id));
+  return articles.filter((a) => ids.has(a.feedId));
+}
+
 async function queryArticles(
   repos: Repositories,
   filter: { q: string; date: string; feedId: string },
@@ -148,6 +155,7 @@ function visibleArticles(articles: Article[], feeds: Feed[]): Article[] {
 /* ------------------------------------------------------- form validation */
 
 const MAX_URL_LEN = 2048;
+const MAX_CATEGORY_LEN = 100;
 const MIN_INTERVAL = 15;
 const MAX_INTERVAL = 31 * 24 * 60; // 31日。事実上の上限(異常値の混入防止)。
 
@@ -185,6 +193,7 @@ function parseFeedForm(body: Record<string, unknown>): FeedFormParse {
     fulltextAllowed: body['fulltext_allowed'] !== undefined,
     enabled: body['enabled'] !== undefined,
     tosNote: formStr(body, 'tos_note'),
+    category: formStr(body, 'category'),
   };
   const fail = (error: string): FeedFormParse => ({ ok: false, error, values });
 
@@ -207,6 +216,9 @@ function parseFeedForm(body: Record<string, unknown>): FeedFormParse {
   if (values.tosNote.length > 2000) {
     return fail('規約メモは2000文字以内で入力してください。');
   }
+  if (values.category.length > MAX_CATEGORY_LEN) {
+    return fail(`カテゴリは${MAX_CATEGORY_LEN}文字以内で入力してください。`);
+  }
   return {
     ok: true,
     values,
@@ -219,6 +231,7 @@ function parseFeedForm(body: Record<string, unknown>): FeedFormParse {
       fulltextAllowed: values.fulltextAllowed,
       enabled: values.enabled,
       tosNote: values.tosNote === '' ? null : values.tosNote,
+      category: values.category === '' ? null : values.category,
     },
   };
 }
@@ -633,12 +646,16 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     const q = c.req.query('q')?.trim() ?? '';
     const date = c.req.query('date')?.trim() ?? '';
     const feedId = c.req.query('feed')?.trim() ?? '';
+    const category = c.req.query('category')?.trim() ?? '';
     const ctx = pageCtx(c, 'articles', { q, date });
     if (date !== '' && !isRealDate(date)) {
       return html(c, messagePage(ctx, '不正なリクエスト', 'date は実在する日付を YYYY-MM-DD 形式で指定してください。'), 400);
     }
     if (feedId !== '' && !UUID_RE.test(feedId)) {
       return html(c, messagePage(ctx, '不正なリクエスト', 'feed の形式が不正です。'), 400);
+    }
+    if (category.length > MAX_CATEGORY_LEN) {
+      return html(c, messagePage(ctx, '不正なリクエスト', `category は${MAX_CATEGORY_LEN}文字以内で指定してください。`), 400);
     }
     const [feeds, articles] = await Promise.all([
       deps.repos.feeds.list(),
@@ -649,7 +666,14 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       layout(
         '記事一覧 — Wire Desk',
         ctx,
-        articlesBody({ articles: visibleArticles(articles, feeds), feeds, q, date, feedId }),
+        articlesBody({
+          articles: filterByCategory(visibleArticles(articles, feeds), feeds, category),
+          feeds,
+          q,
+          date,
+          feedId,
+          category,
+        }),
       ),
     );
   });
@@ -694,7 +718,10 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
   app.get('/feeds/:id', async (c) => {
     const feed = await findFeed(c);
     if (feed === null) return notFoundPage(c);
-    return html(c, layout('フィードを編集 — Wire Desk', pageCtx(c, 'feeds'), feedEditBody({ feed })));
+    // datalist 用の既存カテゴリ候補(全フィードから抽出はビュー側)。
+    const feeds = await deps.repos.feeds.list();
+    const categories = [...new Set(feeds.flatMap((f) => (f.category !== null ? [f.category] : [])))];
+    return html(c, layout('フィードを編集 — Wire Desk', pageCtx(c, 'feeds'), feedEditBody({ feed, categories })));
   });
 
   app.post('/feeds/:id', async (c) => {

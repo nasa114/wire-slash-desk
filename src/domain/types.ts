@@ -9,6 +9,8 @@ export interface Feed {
   fulltextAllowed: boolean;
   enabled: boolean;
   tosNote: string | null;
+  /** 配信元の分類(例: 技術 / ニュース)。未分類は null。 */
+  category: string | null;
   etag: string | null;
   lastModified: string | null;
   lastFetchedAt: Date | null;
@@ -25,6 +27,7 @@ export interface NewFeed {
   fulltextAllowed?: boolean;
   enabled?: boolean;
   tosNote?: string | null;
+  category?: string | null;
 }
 
 export type FeedPatch = Partial<NewFeed>;
