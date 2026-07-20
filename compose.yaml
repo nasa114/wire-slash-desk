@@ -2,7 +2,10 @@
 #
 # 使い方:
 #   1. リポジトリ直下に .env を作成(必須: POSTGRES_PASSWORD, MCP_BEARER_TOKEN, COLLECTOR_TOKEN)
-#   2. docker compose up -d --build
+#   2. docker compose build && docker compose up -d(docker compose up -d --build でも同じ)
+#      ビルドされるのは app のみで、migrate は同じイメージ(personal-rss-reader-app)を参照する。
+#      pnpm store は BuildKit の cache mount(Dockerfile 参照)としてビルドホストに残り、
+#      次回の docker compose build で再利用される(docker builder prune で消える)。
 #   3. 初回のみ、信頼できるネットワークから http://<host>:3000/ を開き /setup で管理ユーザーを作成
 #      (docs/004_KnownLimitations.md §6 — セットアップ完了前に公開網へ晒さないこと)
 #
@@ -47,9 +50,10 @@ services:
       retries: 5
       start_period: 30s
 
-  # マイグレーションを1回だけ実行して終了する(app はこれの成功を待つ)
+  # マイグレーションを1回だけ実行して終了する(app はこれの成功を待つ)。
+  # ビルドは app 側で1回だけ行い、同じイメージを名前で共有する(二重ビルド回避)。
   migrate:
-    build: .
+    image: personal-rss-reader-app
     restart: "no"
     command: ["npm", "run", "migrate"]
     environment:
@@ -62,6 +66,7 @@ services:
 
   app:
     build: .
+    image: personal-rss-reader-app
     restart: unless-stopped
     ports:
       # 既定はループバックのみ(TLS 終端プロキシ経由での公開を前提)。

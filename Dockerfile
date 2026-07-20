@@ -8,7 +8,12 @@ WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 # 本番依存のみ・lockfile 厳守・ライフサイクルスクリプト無効(サプライチェーン対策、.npmrc とも整合)
-RUN pnpm install --frozen-lockfile --ignore-scripts --prod
+# cache mount により lockfile が変わっても既ダウンロード分の再取得を避ける
+# (pnpm store: 取得済みパッケージの content-addressable store / corepack: pnpm 本体のキャッシュ)。
+# キャッシュはイメージには含まれず、ビルドホストの BuildKit に残って次回ビルドで再利用される。
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    --mount=type=cache,id=corepack,target=/root/.cache/node/corepack \
+    pnpm install --store-dir=/pnpm/store --frozen-lockfile --ignore-scripts --prod
 
 FROM node:24-slim
 ENV NODE_ENV=production
