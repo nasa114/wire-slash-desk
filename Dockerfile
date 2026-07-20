@@ -1,9 +1,17 @@
 # syntax=docker/dockerfile:1
 # デプロイ用イメージ(Node 24 native type stripping で TS を直接実行、ビルド工程なし)。
 # 開発は .devcontainer/ を使う — このファイルはデプロイ専用。
+#
+# Node.js の更新はこの ARG 1箇所を変更する(base を介して全ステージが共有)。
+# 更新時は package.json の engines と .devcontainer/compose.yml の image も合わせること。
+# 新バージョンの試験ビルドはファイルを変更せずに行える:
+#   docker compose build --build-arg NODE_IMAGE=node:26-slim
+ARG NODE_IMAGE=node:24-slim
 
-FROM node:24-slim AS deps
+FROM ${NODE_IMAGE} AS base
 WORKDIR /app
+
+FROM base AS deps
 # packageManager フィールド(pnpm@11.7.0)を corepack が読んで正確なバージョンを使う
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
@@ -19,14 +27,13 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # フォールバックを流用)、build-info.json だけを最終イメージへ渡す。
 # .git 本体は最終イメージに含めない。build args なしの素の
 # `docker compose build` でもコミットハッシュが自動で焼き込まれる。
-FROM node:24-slim AS gitinfo
+FROM base AS gitinfo
 WORKDIR /repo
 COPY . .
 RUN node --input-type=module -e "import { writeFileSync } from 'node:fs'; const { loadBuildInfo } = await import('/repo/src/server/build-info.ts'); const { commit } = loadBuildInfo({}, '/repo'); writeFileSync('/repo/build-info.json', JSON.stringify({ commit, builtAt: new Date().toISOString() }));"
 
-FROM node:24-slim
+FROM base AS runtime
 ENV NODE_ENV=production
-WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY migrations ./migrations
