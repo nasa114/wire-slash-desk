@@ -22,6 +22,13 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY migrations ./migrations
 COPY src ./src
+# バージョン情報の焼き込み(イメージに .git を含めないため build-arg で受ける。
+# compose.yaml の build.args 参照)。認証済み UI のフッターと
+# GET /internal/version(X-Collector-Token 必須)で確認できる。
+# ARG は値が変わるとこの行以降のキャッシュだけを無効化するので最後に置く。
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=
+ENV GIT_COMMIT=${GIT_COMMIT} BUILD_TIME=${BUILD_TIME}
 # 非 root で実行(node ユーザーは base image 同梱)
 USER node
 EXPOSE 3000

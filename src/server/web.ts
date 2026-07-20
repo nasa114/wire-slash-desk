@@ -17,6 +17,7 @@ import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.ts
 import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
 import { OAUTH_SCOPES, type RssOAuthProvider } from './oauth-provider.ts';
+import type { BuildInfo } from './build-info.ts';
 import {
   articlesBody,
   authLayout,
@@ -55,6 +56,8 @@ export interface WebDeps {
   oauthProvider?: RssOAuthProvider;
   /** 初回セットアップを保護する任意トークン(PT-001)。未指定なら従来どおり無保護。 */
   setupToken?: string;
+  /** バージョン・ビルド情報。指定時は認証済みページのフッターに表示する。 */
+  buildInfo?: BuildInfo;
 }
 
 type WebEnv = { Variables: { user: User } };
@@ -328,6 +331,7 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     activeNav,
     username: c.get('user').username,
     ...(query !== undefined ? { query } : {}),
+    ...(deps.buildInfo !== undefined ? { buildInfo: deps.buildInfo } : {}),
   });
 
   /* ------------------------------------------------------ assets */

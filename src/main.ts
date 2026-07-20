@@ -2,6 +2,7 @@ import type { Server } from 'node:http';
 import type { Repositories } from './domain/repositories.ts';
 import { buildUserAgent, loadConfig } from './config.ts';
 import { createApp } from './server/app.ts';
+import { loadBuildInfo } from './server/build-info.ts';
 
 /**
  * 別エージェントが実装中のモジュール群を型を仮定せず動的 import で吸収する。
@@ -80,6 +81,7 @@ async function main(): Promise<void> {
     ...(config.oauthIssuerUrl !== undefined ? { oauthIssuerUrl: config.oauthIssuerUrl } : {}),
     ...(config.setupToken !== undefined ? { setupToken: config.setupToken } : {}),
     userAgent,
+    buildInfo: loadBuildInfo(),
   });
 
   await new Promise<void>((resolve) => {

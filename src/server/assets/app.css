@@ -263,6 +263,8 @@ footer.colophon {
   display: flex; flex-wrap: wrap; gap: 6px 18px;
   font-family: var(--mono); font-size: 0.7rem; color: var(--ink-3);
 }
+.colophon .build-info { margin-left: auto; }
+.colophon .build-info code { font-family: inherit; }
 
 @media (prefers-reduced-motion: no-preference) {
   .shell { animation: rise 0.28s ease-out; }

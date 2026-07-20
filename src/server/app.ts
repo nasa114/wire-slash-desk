@@ -13,6 +13,7 @@ import type { LookupFn } from './ssrf.ts';
 import { verifyBearer, verifyCollectorToken } from './auth.ts';
 import { OAUTH_SCOPES, RssOAuthProvider } from './oauth-provider.ts';
 import { createWebApp } from './web.ts';
+import { UNKNOWN_BUILD_INFO, type BuildInfo } from './build-info.ts';
 
 export interface AppDeps {
   repos: Repositories;
@@ -36,6 +37,11 @@ export interface AppDeps {
    * 有効になる。未指定なら従来どおり静的 Bearer のみ。
    */
   oauthIssuerUrl?: string;
+  /**
+   * バージョン・ビルド情報(src/server/build-info.ts)。認証済み UI のフッターと
+   * GET /internal/version(X-Collector-Token 必須)に表示する。未指定なら unknown。
+   */
+  buildInfo?: BuildInfo;
 }
 
 const MAX_COLLECT_BODY_BYTES = 64 * 1024;
@@ -59,6 +65,7 @@ async function drainBody(req: IncomingMessage, maxBytes: number): Promise<void> 
 
 /** node:http の Server を生成(未 listen)。設計書 §7, §8。 */
 export function createApp(deps: AppDeps): Server {
+  const buildInfo = deps.buildInfo ?? UNKNOWN_BUILD_INFO;
   // MCP OAuth 2.1(設計書 §7 Phase B)。プロトコル実装は SDK の公式ハンドラ
   // (express ベース)に委ね、発行・保存は RssOAuthProvider がリポジトリへ橋渡し。
   let oauthProvider: RssOAuthProvider | undefined;
@@ -179,6 +186,7 @@ export function createApp(deps: AppDeps): Server {
   const webApp = createWebApp({
     repos: deps.repos,
     cookieSecure: deps.cookieSecure ?? false,
+    buildInfo,
     ...(deps.setupToken !== undefined ? { setupToken: deps.setupToken } : {}),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
     ...(oauthProvider !== undefined ? { oauthProvider } : {}),
@@ -202,6 +210,21 @@ export function createApp(deps: AppDeps): Server {
           return;
         }
         await handleCollect(req, res);
+        return;
+      }
+      if (path === '/internal/version') {
+        // デプロイ確認用。ブラウザから無認証で開けないよう collector トークンを課す。
+        if (method !== 'GET') {
+          sendJson(res, 405, { status: 'method_not_allowed' });
+          return;
+        }
+        const token = req.headers['x-collector-token'];
+        const headerValue = Array.isArray(token) ? token[0] : token;
+        if (!verifyCollectorToken(headerValue, deps.collectorToken)) {
+          sendJson(res, 401, { status: 'unauthorized' });
+          return;
+        }
+        sendJson(res, 200, { status: 'ok', ...buildInfo });
         return;
       }
       if (path === '/mcp') {
