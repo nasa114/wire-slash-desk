@@ -4,7 +4,11 @@
 #   1. リポジトリ直下に .env を作成(必須: POSTGRES_PASSWORD, MCP_BEARER_TOKEN, COLLECTOR_TOKEN)
 #   2. docker compose build && docker compose up -d(docker compose up -d --build でも同じ)
 #      ビルドされるのは app のみで、migrate は同じイメージ(personal-rss-reader-app)を参照する。
-#      バージョン情報(コミットハッシュ等)をイメージに焼き込むには次の形でビルドする:
+#      バージョン情報(コミットハッシュ・ビルド日時)は素の docker compose build /
+#      docker compose up -d --build だけで自動的に焼き込まれる(Dockerfile の gitinfo
+#      ステージが .git から読んで build-info.json を生成する)。
+#      GIT_COMMIT / BUILD_TIME のシェル変数渡しは .git が無いコンテキスト等での
+#      任意オーバーライド(通常は不要):
 #        GIT_COMMIT=$(git rev-parse HEAD) BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
 #          docker compose up -d --build
 #      デプロイ後の確認(VM 上から。ブラウザには公開されない)。トークンをシェル履歴に
@@ -76,8 +80,9 @@ services:
     build:
       context: .
       args:
-        # デプロイ後に「どのコードが動いているか」を確認するための焼き込み(Dockerfile 参照)。
-        # 冒頭コメントのビルドコマンド例のとおり、シェル環境変数で渡す。
+        # 任意オーバーライド(.git の無いコンテキストでのビルド用。Dockerfile 参照)。
+        # 通常は不要 — gitinfo ステージが .git から自動で焼き込む。渡す場合は
+        # 冒頭コメントのとおりシェル環境変数で指定する。
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-}
     image: personal-rss-reader-app

@@ -11,15 +11,20 @@ import { createMemoryRepositories } from '../../src/repo/memory/index.ts';
 
 /* ------------------------------------------------------------ loadBuildInfo */
 
-/** package.json + .git を持つ一時ディレクトリを作る(rootDir 注入用)。 */
+/** package.json + .git + build-info.json を持つ一時ディレクトリを作る(rootDir 注入用)。 */
 function makeRoot(opts: {
   version?: string;
   head?: string;
   refs?: Record<string, string>;
   packedRefs?: string;
+  /** 文字列をそのまま build-info.json として書く(壊れた JSON のテスト用)。 */
+  buildInfoJson?: string;
 }): string {
   const dir = mkdtempSync(join(tmpdir(), 'build-info-'));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ version: opts.version ?? '1.2.3' }));
+  if (opts.buildInfoJson !== undefined) {
+    writeFileSync(join(dir, 'build-info.json'), opts.buildInfoJson);
+  }
   if (opts.head !== undefined) {
     mkdirSync(join(dir, '.git'), { recursive: true });
     writeFileSync(join(dir, '.git', 'HEAD'), opts.head);
@@ -110,6 +115,75 @@ test('build-info: BUILD_TIME は空なら undefined、指定時はそのまま',
       loadBuildInfo({ BUILD_TIME: '2026-07-20T00:00:00Z' }, dir).builtAt,
       '2026-07-20T00:00:00Z',
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const JSON_HASH = 'f0e1d2c3b4a5968778695a4b3c2d1e0f12345678';
+
+test('build-info: build-info.json の commit が .git より優先される', () => {
+  const dir = makeRoot({
+    head: `ref: refs/heads/main\n`,
+    refs: { 'refs/heads/main': HASH },
+    buildInfoJson: JSON.stringify({ commit: JSON_HASH }),
+  });
+  try {
+    assert.equal(loadBuildInfo({}, dir).commit, JSON_HASH);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('build-info: env GIT_COMMIT は build-info.json より優先される', () => {
+  const dir = makeRoot({ buildInfoJson: JSON.stringify({ commit: JSON_HASH }) });
+  try {
+    assert.equal(loadBuildInfo({ GIT_COMMIT: 'abc1234' }, dir).commit, 'abc1234');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('build-info: build-info.json の commit が形式外なら無視して .git へフォールバック', () => {
+  for (const bad of ['unknown', '<script>']) {
+    const dir = makeRoot({
+      head: `ref: refs/heads/main\n`,
+      refs: { 'refs/heads/main': HASH },
+      buildInfoJson: JSON.stringify({ commit: bad }),
+    });
+    try {
+      assert.equal(loadBuildInfo({}, dir).commit, HASH, `commit=${bad} は弾かれること`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('build-info: builtAt は env BUILD_TIME が build-info.json より優先される', () => {
+  const dir = makeRoot({
+    buildInfoJson: JSON.stringify({ commit: JSON_HASH, builtAt: '2026-07-19T00:00:00Z' }),
+  });
+  try {
+    assert.equal(
+      loadBuildInfo({ BUILD_TIME: '2026-07-20T00:00:00Z' }, dir).builtAt,
+      '2026-07-20T00:00:00Z',
+    );
+    assert.equal(loadBuildInfo({}, dir).builtAt, '2026-07-19T00:00:00Z');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('build-info: 壊れた build-info.json は無視して .git へフォールバック', () => {
+  const dir = makeRoot({
+    head: `ref: refs/heads/main\n`,
+    refs: { 'refs/heads/main': HASH },
+    buildInfoJson: '{ not valid json',
+  });
+  try {
+    const info = loadBuildInfo({}, dir);
+    assert.equal(info.commit, HASH);
+    assert.equal(info.builtAt, undefined);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
