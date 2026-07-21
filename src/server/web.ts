@@ -337,8 +337,19 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
   const serveAsset =
     (name: AssetName, contentType: string) =>
     (c: Context): Response => {
+      const etag = `"${assetVersion(name)}"`;
       const immutable = c.req.query('v') === assetVersion(name);
       c.header('cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache');
+      // no-cache(v 無し・不一致)の再検証をフル 200 にしないための検証子。
+      // 内容はバイト同一の再現なので弱い比較で足りる — W/ 接頭辞は剥がして比較する。
+      c.header('etag', etag);
+      const ifNoneMatch = c.req.header('if-none-match');
+      if (ifNoneMatch !== undefined) {
+        const matched =
+          ifNoneMatch.trim() === '*' ||
+          ifNoneMatch.split(',').some((v) => v.trim().replace(/^W\//, '') === etag);
+        if (matched) return c.body(null, 304);
+      }
       c.header('content-type', contentType);
       return c.body(getAsset(name));
     };

@@ -263,3 +263,48 @@ test('assets(統合): 配信される app.css は getAsset の書き換え・min
     await close();
   }
 });
+
+test('assets(統合): ETag と If-None-Match による 304(帯域節約)', async (t) => {
+  const { base, close } = await startApp();
+  try {
+    const etag = `"${assetVersion('app.css')}"`;
+
+    await t.test('全レスポンスに ETag("<version>" 形式)が付く', async () => {
+      const plain = await fetch(`${base}/assets/app.css`);
+      assert.equal(plain.headers.get('etag'), etag, 'v 無し(no-cache)にも ETag');
+      const versioned = await fetch(`${base}/assets/app.css?v=${assetVersion('app.css')}`);
+      assert.equal(versioned.headers.get('etag'), etag, '正しい v(immutable)にも ETag');
+    });
+
+    await t.test('If-None-Match 一致 → 304・空ボディ・ETag 維持', async () => {
+      const res = await fetch(`${base}/assets/app.css`, {
+        headers: { 'if-none-match': etag },
+      });
+      assert.equal(res.status, 304);
+      assert.equal(await res.text(), '', '304 のボディは空');
+      assert.equal(res.headers.get('etag'), etag, '304 にも ETag(再検証の継続用)');
+      assert.equal(res.headers.get('cache-control'), 'no-cache');
+    });
+
+    await t.test('弱い検証子(W/"…")・複数値でも一致する', async () => {
+      const weak = await fetch(`${base}/assets/app.css`, {
+        headers: { 'if-none-match': `W/${etag}` },
+      });
+      assert.equal(weak.status, 304, 'W/ 付きでも一致(バイト同一なので弱い比較で十分)');
+      const multi = await fetch(`${base}/assets/app.css`, {
+        headers: { 'if-none-match': `"deadbeef1234", ${etag}` },
+      });
+      assert.equal(multi.status, 304, 'リストのどれかが一致すれば 304');
+    });
+
+    await t.test('不一致の If-None-Match → 200 + ボディ', async () => {
+      const res = await fetch(`${base}/assets/app.css`, {
+        headers: { 'if-none-match': '"deadbeef1234"' },
+      });
+      assert.equal(res.status, 200);
+      assert.equal(await res.text(), getAsset('app.css'), '不一致なら通常どおり全文');
+    });
+  } finally {
+    await close();
+  }
+});
