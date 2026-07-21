@@ -100,20 +100,21 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .stat .label { font-size: 0.72rem; letter-spacing: 0.1em; color: var(--ink-2); text-transform: uppercase; }
 .stat .sub { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-3); }
 
-/* 市況欄(為替、設計書 §14)。統計4枚の下に独立した帯として付ける
-   (Codex デザインレビュー 2026-07-22: 行折り返しの宙に浮く罫線を構造で解消) */
+/* 市況欄(為替、設計書 §14)。新聞の欄外市況を意識した静的な1行ティッカー:
+   項目は内容幅で左から詰め、利用可能幅へ引き伸ばさない。余白は「巨大な空セルの
+   内部」ではなく罫線上の紙面余白として右側に集める(Codex レビュー 2026-07-22) */
 .market-strip {
-  display: grid; grid-template-columns: minmax(120px, 1fr) 3fr; align-items: stretch;
-  margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 24px;
+  margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line);
 }
-.market-heading { padding: 2px 20px 2px 0; }
-.market-title { font-family: var(--serif); font-size: 0.9rem; font-weight: 600; letter-spacing: 0.08em; color: var(--ink-2); }
-.market-caption { margin-top: 2px; font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.08em; color: var(--ink-3); text-transform: uppercase; }
-.market-quotes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-.market-quote { min-width: 0; padding: 1px 20px; border-left: 1px solid var(--line); }
-.market-pair { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; color: var(--ink-2); }
-.market-value { margin-top: 1px; font-family: var(--serif); font-size: 1.55rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
-.market-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; font-family: var(--mono); font-size: 0.66rem; color: var(--ink-3); }
+.market-heading { flex: 0 0 auto; min-width: 132px; }
+.market-title { margin: 0; font-family: var(--serif); font-size: 0.86rem; font-weight: 600; line-height: 1.2; letter-spacing: 0.08em; color: var(--ink-2); }
+.market-caption { margin: 3px 0 0; font-family: var(--mono); font-size: 0.6rem; line-height: 1.2; letter-spacing: 0.08em; color: var(--ink-3); text-transform: uppercase; }
+.market-quotes { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.market-quote { display: flex; flex: 0 0 auto; align-items: baseline; gap: 8px; padding: 2px 20px; border-left: 1px solid var(--line); white-space: nowrap; }
+.market-pair { font-family: var(--mono); font-size: 0.66rem; line-height: 1; letter-spacing: 0.09em; color: var(--ink-2); }
+.market-value { font-family: var(--serif); font-size: 1.18rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.market-meta { display: inline-flex; align-items: baseline; gap: 7px; font-family: var(--mono); font-size: 0.61rem; line-height: 1; color: var(--ink-3); }
 /* 値動きの方向は色だけに依存させない(▲▼併記)。brass はブランド装飾用に温存 */
 .market-meta .move { font-weight: 500; }
 .market-meta .move.up { color: var(--market-up); }
@@ -300,14 +301,26 @@ footer.colophon {
   .grid { grid-template-columns: 1fr; }
   .stats-primary { grid-template-columns: repeat(2, 1fr); gap: 14px 0; }
   .stat:nth-child(odd) { border-left: none; padding-left: 0; }
-  .market-strip { grid-template-columns: 1fr; margin-top: 18px; }
-  .market-heading { display: flex; align-items: baseline; gap: 8px; padding: 0 0 8px; }
-  .market-caption { margin-top: 0; }
-  .market-quote:first-child { border-left: none; padding-left: 0; }
+  .market-strip { display: block; }
+  .market-heading { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-bottom: 8px; }
+  .market-caption { margin: 0; }
+  .market-quotes { margin-left: -16px; row-gap: 8px; }
+  .market-quote { padding-left: 16px; padding-right: 16px; }
   .masthead-meta { flex-basis: 100%; margin-left: 0; }
   .search { margin-left: 0; flex-basis: 100%; }
   .search input[type="text"] { flex: 1; }
   .form-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  /* 市況欄: 1項目=1行にして値と更新情報の極端な圧縮を防ぐ */
+  .market-quotes { display: grid; grid-template-columns: 1fr; margin-left: 0; row-gap: 0; }
+  .market-quote {
+    display: grid; grid-template-columns: minmax(72px, auto) minmax(72px, auto) 1fr;
+    align-items: baseline; gap: 10px; width: 100%; padding: 8px 0;
+    border-left: 0; border-top: 1px solid var(--line); white-space: normal;
+  }
+  .market-quote:first-child { border-top: 0; }
+  .market-meta { justify-self: end; white-space: nowrap; }
 }
 
 /* ---- テンプレートの style 属性排除用(スペーシング・補足文) ---- */

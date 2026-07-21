@@ -224,9 +224,9 @@ function fmtRate(rate: number): string {
 }
 
 /**
- * 為替レートの市況カード(設計書 §14)。統計カードと同列の KPI ではなく、
- * 統計帯の下に付く小さなマーケットティッカーとして見せる(Codex デザインレビュー
- * 2026-07-22 の推奨案)。stale = TTL 切れの古い値を表示中。
+ * 為替レートの市況項目(設計書 §14)。統計カードと同列の KPI ではなく、
+ * 新聞の欄外市況風の静的な1行ティッカーとして内容幅で並べる
+ * (Codex デザインレビュー 2026-07-22 第2回の推奨案)。stale = TTL 切れの古い値。
  */
 function marketQuote(view: RateView): string {
   let move = '';
@@ -238,11 +238,11 @@ function marketQuote(view: RateView): string {
   }
   const asOf = view.marketTime ?? view.fetchedAt;
   const staleNote = view.stale ? '<span class="stale-note">更新停止中</span>' : '';
-  return `<div class="market-quote${view.stale ? ' stale' : ''}">
-    <div class="market-pair">${escapeHtml(fmtPair(view.pair))}</div>
-    <div class="market-value">${escapeHtml(fmtRate(view.rate))}</div>
-    <div class="market-meta">${move}<time>${hhmmJst(asOf)} JST</time>${staleNote}</div>
-  </div>`;
+  return `<li class="market-quote${view.stale ? ' stale' : ''}">
+    <span class="market-pair">${escapeHtml(fmtPair(view.pair))}</span>
+    <span class="market-value">${escapeHtml(fmtRate(view.rate))}</span>
+    <span class="market-meta">${move}<time>${hhmmJst(asOf)} JST</time>${staleNote}</span>
+  </li>`;
 }
 
 /** 市況欄。レートが1件も無ければ描画しない(帯ごと非表示)。 */
@@ -250,13 +250,13 @@ function marketStrip(rates: RateView[]): string {
   if (rates.length === 0) return '';
   return `
   <div class="market-strip" aria-label="為替">
-    <div class="market-heading">
-      <div class="market-title">為替</div>
-      <div class="market-caption">Foreign Exchange</div>
-    </div>
-    <div class="market-quotes">
+    <header class="market-heading">
+      <h2 class="market-title">為替</h2>
+      <p class="market-caption">Foreign Exchange</p>
+    </header>
+    <ul class="market-quotes">
 ${rates.map((r) => `      ${marketQuote(r)}`).join('\n')}
-    </div>
+    </ul>
   </div>`;
 }
 
