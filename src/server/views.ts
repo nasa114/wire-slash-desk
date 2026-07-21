@@ -223,21 +223,40 @@ function fmtRate(rate: number): string {
   return rate >= 20 ? rate.toFixed(2) : rate.toFixed(4);
 }
 
-/** 為替レートの stat カード(設計書 §14)。stale = TTL 切れの古い値を表示中。 */
-function fxStat(view: RateView): string {
+/**
+ * 為替レートの市況カード(設計書 §14)。統計カードと同列の KPI ではなく、
+ * 統計帯の下に付く小さなマーケットティッカーとして見せる(Codex デザインレビュー
+ * 2026-07-22 の推奨案)。stale = TTL 切れの古い値を表示中。
+ */
+function marketQuote(view: RateView): string {
   let move = '';
   if (view.prevClose !== null && view.prevClose > 0) {
     const pct = ((view.rate - view.prevClose) / view.prevClose) * 100;
     const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : '';
     const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '±';
-    move = `<span class="move${cls === '' ? '' : ` ${cls}`}">${arrow}${Math.abs(pct).toFixed(2)}%</span> · `;
+    move = `<span class="move${cls === '' ? '' : ` ${cls}`}">${arrow}${Math.abs(pct).toFixed(2)}%</span>`;
   }
   const asOf = view.marketTime ?? view.fetchedAt;
-  const staleNote = view.stale ? ' · <span class="stale-note">更新停止中</span>' : '';
-  return `<div class="stat fx${view.stale ? ' stale' : ''}">
-    <div class="num">${escapeHtml(fmtRate(view.rate))}</div>
-    <div class="label">${escapeHtml(fmtPair(view.pair))}</div>
-    <div class="sub">${move}${hhmmJst(asOf)} JST${staleNote}</div>
+  const staleNote = view.stale ? '<span class="stale-note">更新停止中</span>' : '';
+  return `<div class="market-quote${view.stale ? ' stale' : ''}">
+    <div class="market-pair">${escapeHtml(fmtPair(view.pair))}</div>
+    <div class="market-value">${escapeHtml(fmtRate(view.rate))}</div>
+    <div class="market-meta">${move}<time>${hhmmJst(asOf)} JST</time>${staleNote}</div>
+  </div>`;
+}
+
+/** 市況欄。レートが1件も無ければ描画しない(帯ごと非表示)。 */
+function marketStrip(rates: RateView[]): string {
+  if (rates.length === 0) return '';
+  return `
+  <div class="market-strip" aria-label="為替">
+    <div class="market-heading">
+      <div class="market-title">為替</div>
+      <div class="market-caption">Foreign Exchange</div>
+    </div>
+    <div class="market-quotes">
+${rates.map((r) => `      ${marketQuote(r)}`).join('\n')}
+    </div>
   </div>`;
 }
 
@@ -249,8 +268,8 @@ function statsStrip(input: {
 }): string {
   const enabled = input.feeds.filter((f) => f.enabled).length;
   const fulltext = input.feeds.filter((f) => f.fulltextAllowed).length;
-  const fx = input.rates.map((r) => `\n  ${fxStat(r)}`).join('');
   return `<section class="stats" aria-label="概況">
+  <div class="stats-primary">
   <div class="stat">
     <div class="num">${input.last24Count}<span class="unit">件</span></div>
     <div class="label">直近24時間</div>
@@ -270,7 +289,8 @@ function statsStrip(input: {
     <div class="num">${input.lastFetched === null ? '—' : hhmmJst(input.lastFetched)}</div>
     <div class="label">最終取得</div>
     <div class="sub">${input.lastFetched === null ? 'まだ収集していません' : `${jstDayStamp(input.lastFetched)} JST`}</div>
-  </div>${fx}
+  </div>
+  </div>${marketStrip(input.rates)}
 </section>`;
 }
 

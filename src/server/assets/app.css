@@ -15,6 +15,8 @@
   --brass: #A8874C;
   --brass-ink: #8A6D39;
   --danger: #A0453C;
+  --market-up: #8C5547;
+  --market-down: #586B78;
   --panel-shadow: 0 1px 2px rgba(28, 38, 55, 0.05);
   --serif: Georgia, "Times New Roman", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
   --sans: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", sans-serif;
@@ -32,6 +34,8 @@
     --brass: #C4A263;
     --brass-ink: #D3B87E;
     --danger: #D08A82;
+    --market-up: #C99485;
+    --market-down: #93A8B8;
     --panel-shadow: none;
   }
 }
@@ -87,7 +91,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .btn-ghost:hover { color: var(--ink); border-color: var(--ink-3); }
 
 /* stats strip */
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); padding: 20px 0 26px; }
+.stats { padding: 20px 0 26px; }
+.stats-primary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .stat { padding: 2px 20px; border-left: 1px solid var(--line); min-width: 0; }
 .stat:first-child { border-left: none; padding-left: 0; }
 .stat .num { font-family: var(--serif); font-size: 2rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
@@ -95,11 +100,26 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .stat .label { font-size: 0.72rem; letter-spacing: 0.1em; color: var(--ink-2); text-transform: uppercase; }
 .stat .sub { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-3); }
 
-/* 為替レートカード(設計書 §14)。stale = TTL 切れの古い値を表示中 */
-.stat.fx .sub .move.up { color: var(--brass-ink); }
-.stat.fx .sub .move.down { color: var(--danger); }
-.stat.fx.stale .num { color: var(--ink-3); }
-.stat.fx .sub .stale-note { color: var(--danger); }
+/* 市況欄(為替、設計書 §14)。統計4枚の下に独立した帯として付ける
+   (Codex デザインレビュー 2026-07-22: 行折り返しの宙に浮く罫線を構造で解消) */
+.market-strip {
+  display: grid; grid-template-columns: minmax(120px, 1fr) 3fr; align-items: stretch;
+  margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.market-heading { padding: 2px 20px 2px 0; }
+.market-title { font-family: var(--serif); font-size: 0.9rem; font-weight: 600; letter-spacing: 0.08em; color: var(--ink-2); }
+.market-caption { margin-top: 2px; font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.08em; color: var(--ink-3); text-transform: uppercase; }
+.market-quotes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.market-quote { min-width: 0; padding: 1px 20px; border-left: 1px solid var(--line); }
+.market-pair { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; color: var(--ink-2); }
+.market-value { margin-top: 1px; font-family: var(--serif); font-size: 1.55rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.market-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; font-family: var(--mono); font-size: 0.66rem; color: var(--ink-3); }
+/* 値動きの方向は色だけに依存させない(▲▼併記)。brass はブランド装飾用に温存 */
+.market-meta .move { font-weight: 500; }
+.market-meta .move.up { color: var(--market-up); }
+.market-meta .move.down { color: var(--market-down); }
+.market-quote.stale .market-value { color: var(--ink-3); }
+.market-meta .stale-note { color: var(--danger); }
 
 /* layout grid */
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) 316px; gap: 22px; align-items: start; }
@@ -278,8 +298,12 @@ footer.colophon {
 }
 @media (max-width: 940px) {
   .grid { grid-template-columns: 1fr; }
-  .stats { grid-template-columns: repeat(2, 1fr); gap: 14px 0; }
-  .stat:nth-child(3) { border-left: none; padding-left: 0; }
+  .stats-primary { grid-template-columns: repeat(2, 1fr); gap: 14px 0; }
+  .stat:nth-child(odd) { border-left: none; padding-left: 0; }
+  .market-strip { grid-template-columns: 1fr; margin-top: 18px; }
+  .market-heading { display: flex; align-items: baseline; gap: 8px; padding: 0 0 8px; }
+  .market-caption { margin-top: 0; }
+  .market-quote:first-child { border-left: none; padding-left: 0; }
   .masthead-meta { flex-basis: 100%; margin-left: 0; }
   .search { margin-left: 0; flex-basis: 100%; }
   .search input[type="text"] { flex: 1; }

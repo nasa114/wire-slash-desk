@@ -114,3 +114,6 @@ binaries.prisma.sh
 host.docker.internal
 cdn.playwright.dev
 deb.debian.org
+
+# Test
+query1.finance.yahoo.com
