@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -18,7 +16,8 @@ import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
 import { OAUTH_SCOPES, type RssOAuthProvider } from './oauth-provider.ts';
 import type { BuildInfo } from './build-info.ts';
-import { minifyCss, minifyHtml, minifyJs } from './minify.ts';
+import { minifyHtml } from './minify.ts';
+import { assetVersion, getAsset, type AssetName } from './assets.ts';
 import {
   articlesBody,
   authLayout,
@@ -62,30 +61,6 @@ export interface WebDeps {
 }
 
 type WebEnv = { Variables: { user: User } };
-
-const require = createRequire(import.meta.url);
-let htmxSource: string | null = null;
-function loadHtmxSource(): string {
-  if (htmxSource === null) {
-    htmxSource = readFileSync(require.resolve('htmx.org/dist/htmx.min.js'), 'utf8');
-  }
-  return htmxSource;
-}
-
-/** src/server/assets/ の静的ファイル(共通CSS・ログイン画面の背景SVG・アラートJS・時計JS)。 */
-const assetCache = new Map<string, string>();
-function loadAsset(name: string): string {
-  let content = assetCache.get(name);
-  if (content === undefined) {
-    content = readFileSync(new URL(`./assets/${name}`, import.meta.url), 'utf8');
-    // 配信前に minify(実装コメント等の情報露出低減。src/server/minify.ts 参照)。
-    // ソースはコメント付きのまま保ち、初回ロード時に1回だけ変換してキャッシュする。
-    if (name.endsWith('.css')) content = minifyCss(content);
-    else if (name.endsWith('.js')) content = minifyJs(content);
-    assetCache.set(name, content);
-  }
-  return content;
-}
 
 /* ----------------------------------------------------------- data access */
 
@@ -355,35 +330,24 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
 
   /* ------------------------------------------------------ assets */
 
-  app.get('/assets/htmx.min.js', (c) => {
-    c.header('cache-control', 'public, max-age=86400');
-    c.header('content-type', 'text/javascript; charset=utf-8');
-    return c.body(loadHtmxSource());
-  });
+  // 内容ハッシュ版キャッシュバスティング(src/server/assets.ts 参照)。
+  // 現行バージョンと一致する `?v=` 付きは内容とURLが1対1なので immutable で
+  // 1年キャッシュさせる。v 無し・不一致は拒否せず同じボディを返しつつ
+  // no-cache(毎回再検証)にして、古いURLのキャッシュ汚染を防ぐ。
+  const serveAsset =
+    (name: AssetName, contentType: string) =>
+    (c: Context): Response => {
+      const immutable = c.req.query('v') === assetVersion(name);
+      c.header('cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache');
+      c.header('content-type', contentType);
+      return c.body(getAsset(name));
+    };
 
-  app.get('/assets/app.css', (c) => {
-    c.header('cache-control', 'public, max-age=86400');
-    c.header('content-type', 'text/css; charset=utf-8');
-    return c.body(loadAsset('app.css'));
-  });
-
-  app.get('/assets/clock.js', (c) => {
-    c.header('cache-control', 'public, max-age=86400');
-    c.header('content-type', 'text/javascript; charset=utf-8');
-    return c.body(loadAsset('clock.js'));
-  });
-
-  app.get('/assets/login.js', (c) => {
-    c.header('cache-control', 'public, max-age=86400');
-    c.header('content-type', 'text/javascript; charset=utf-8');
-    return c.body(loadAsset('login.js'));
-  });
-
-  app.get('/assets/login-bg.svg', (c) => {
-    c.header('cache-control', 'public, max-age=86400');
-    c.header('content-type', 'image/svg+xml; charset=utf-8');
-    return c.body(loadAsset('login-bg.svg'));
-  });
+  app.get('/assets/htmx.min.js', serveAsset('htmx.min.js', 'text/javascript; charset=utf-8'));
+  app.get('/assets/app.css', serveAsset('app.css', 'text/css; charset=utf-8'));
+  app.get('/assets/clock.js', serveAsset('clock.js', 'text/javascript; charset=utf-8'));
+  app.get('/assets/login.js', serveAsset('login.js', 'text/javascript; charset=utf-8'));
+  app.get('/assets/login-bg.svg', serveAsset('login-bg.svg', 'image/svg+xml; charset=utf-8'));
 
   /* ------------------------------------------- setup(初回のみ開放) */
 

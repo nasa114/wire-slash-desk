@@ -1,9 +1,12 @@
 import type { Article, Feed } from '../domain/types.ts';
 import type { BuildInfo } from './build-info.ts';
+import { assetPath } from './assets.ts';
 
 /**
  * Wire Desk のビュー層(HTML 文字列レンダリング)。
  * ルーティング・認証は src/server/web.ts(Hono)が担い、ここは純粋な描画のみ。
+ * 例外としてアセットURL(assetPath)だけは参照する — 静的な内容ハッシュ解決で、
+ * 初回以降はキャッシュ済みのため描画の純粋性・性能に影響しない。
  */
 
 export function escapeHtml(value: string): string {
@@ -109,8 +112,8 @@ function htmlDocument(title: string, body: string, extraScripts = ''): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${escapeHtml(title)}</title>
-<link rel="stylesheet" href="/assets/app.css">
-<script src="/assets/htmx.min.js" defer></script>${extraScripts}
+<link rel="stylesheet" href="${assetPath('app.css')}">
+<script src="${assetPath('htmx.min.js')}" defer></script>${extraScripts}
 </head>
 <body hx-boost="true">
 ${body}
@@ -164,7 +167,7 @@ ${body}
   <span>時刻はすべて日本時間(JST)</span>${buildInfoSpan(ctx.buildInfo)}
 </footer>
 </div>`,
-    '\n<script src="/assets/clock.js" defer></script>',
+    `\n<script src="${assetPath('clock.js')}" defer></script>`,
   );
 }
 
@@ -182,7 +185,7 @@ export function authLayout(title: string, body: string, opts: { login?: boolean 
   ${body}
 </div>
 </div>`,
-    opts.login ? '\n<script src="/assets/login.js" defer></script>' : '',
+    opts.login ? `\n<script src="${assetPath('login.js')}" defer></script>` : '',
   );
 }
 
