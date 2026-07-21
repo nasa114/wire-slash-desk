@@ -95,6 +95,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .stat .label { font-size: 0.72rem; letter-spacing: 0.1em; color: var(--ink-2); text-transform: uppercase; }
 .stat .sub { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-3); }
 
+/* 為替レートカード(設計書 §14)。stale = TTL 切れの古い値を表示中 */
+.stat.fx .sub .move.up { color: var(--brass-ink); }
+.stat.fx .sub .move.down { color: var(--danger); }
+.stat.fx.stale .num { color: var(--ink-3); }
+.stat.fx .sub .stale-note { color: var(--danger); }
+
 /* layout grid */
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) 316px; gap: 22px; align-items: start; }
 .grid.pad-top { margin-top: 22px; }

@@ -3,6 +3,8 @@ import type { Repositories } from './domain/repositories.ts';
 import { buildUserAgent, loadConfig } from './config.ts';
 import { createApp } from './server/app.ts';
 import { loadBuildInfo } from './server/build-info.ts';
+import { createRateService } from './rates/service.ts';
+import { fetchYahooRate } from './rates/yahoo.ts';
 
 /**
  * 別エージェントが実装中のモジュール群を型を仮定せず動的 import で吸収する。
@@ -70,6 +72,19 @@ async function main(): Promise<void> {
   const repos = await loadRepositories(config.databaseUrl as string);
   const runCollect = await loadRunCollect(repos, userAgent, config.trustEgressProxy);
 
+  // 為替レート(設計書 §14)。lazy TTL のため cron は不要で、ダッシュボード表示時に
+  // TTL(既定20分)超過分だけ Yahoo Finance から取得して DB キャッシュを更新する。
+  const rateService =
+    config.exchangeRatePairs.length > 0
+      ? createRateService({
+          repo: repos.exchangeRates,
+          pairs: config.exchangeRatePairs,
+          ttlMinutes: config.exchangeRateTtlMinutes,
+          fetchRate: (pair, at) =>
+            fetchYahooRate(pair, at, { userAgent, trustEgressProxy: config.trustEgressProxy }),
+        })
+      : undefined;
+
   const app: Server = createApp({
     repos,
     runCollect,
@@ -80,6 +95,7 @@ async function main(): Promise<void> {
     cookieSecure: config.cookieSecure,
     ...(config.oauthIssuerUrl !== undefined ? { oauthIssuerUrl: config.oauthIssuerUrl } : {}),
     ...(config.setupToken !== undefined ? { setupToken: config.setupToken } : {}),
+    ...(rateService !== undefined ? { getRates: () => rateService.getRates() } : {}),
     userAgent,
     buildInfo: loadBuildInfo(),
   });

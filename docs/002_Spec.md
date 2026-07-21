@@ -239,3 +239,48 @@ Claude Code公式リファレンス構成に倣い、named volumeで永続化す
 | U4 | TypeScript化の範囲、ORM導入の有無 | T1以降の書き方 |
 | U5 | ~~OAuth 2.1の認可サーバーを自前実装するか外部IdPを使うか~~ → **確定(2026-07-18)**: アプリ内蔵の認可サーバー(MCP SDK 公式ハンドラ + `RssOAuthProvider`)。`OAUTH_ISSUER_URL` 設定時のみ有効。静的 Bearer は Codex 等 OAuth 非対応クライアント向けに恒久共存(T4-2 実装済み) | M4 |
 | U6 | 翻訳結果・ダイジェストの保存方針（`digests` を使うか、クライアント側に置くか） | スキーマ運用 |
+
+## 14. 為替レートウィジェット（T4-3、2026-07-21 追加）
+
+ダッシュボードに為替レート（既定 USD/JPY・EUR/JPY）を表示する。データ源は Yahoo Finance chart API（`https://query1.finance.yahoo.com/v8/finance/chart/<PAIR>=X`、無認証・非公式）。
+
+### 14.1 キャッシュ方針（lazy TTL）
+
+- アクセスごとの取得はオーバースペックのため、**DB キャッシュ + TTL 20分**とする
+- アプリ内に cron は無い（§8 の通り収集は外部トリガー）ため、**定期取得ではなく遅延取得**: ダッシュボード表示時に `exchange_rates` の `fetched_at` を確認し、TTL 超過時のみ Yahoo から取得して upsert。アクセス頻度（1〜3時間に一度）では定期実行より取得回数が少なく、外部 cron 設定にも依存しない
+- 取得失敗時: キャッシュがあれば **stale 表示**（取得時刻を明示）、無ければウィジェット自体を出さない。失敗直後の連続アクセスで Yahoo を叩き続けないよう、プロセス内で失敗後 60 秒は再試行しない（クールダウン）
+- 表示リクエストの応答時間を守るため取得タイムアウトは短め（3.5 秒）
+
+### 14.2 データモデル
+
+```sql
+create table exchange_rates (
+  pair        text primary key,          -- 'USDJPY' 形式（[A-Z]{6}）
+  rate        double precision not null, -- 現在値（regularMarketPrice）
+  prev_close  double precision,          -- 前日終値（chartPreviousClose）。前日比表示用
+  market_time timestamptz,               -- 市場データの時刻（regularMarketTime）
+  fetched_at  timestamptz not null       -- キャッシュ鮮度判定の基準
+);
+```
+
+リポジトリは既存パターン（§3）: `ExchangeRateRepository`（`get` / `upsert`）を memory / pg 両実装 + 契約テスト。
+
+### 14.3 取得経路のセキュリティ
+
+- 宛先は固定ホスト `query1.finance.yahoo.com` のみ。pair は `[A-Z]{6}` に検証してから URL を組み立てる（URL 注入防止）
+- 既存の egress 方針（§6）に従う: `trustEgressProxy` で `assertProxySafeHttpUrl` / `assertPublicHttpUrl` を分岐、`redirect: 'manual'`（リダイレクトは追わない）、応答バイト上限、`AbortSignal.timeout`
+- レスポンスは防御的にパースし、`chart.result[0].meta.regularMarketPrice` が正の有限数であることのみを信頼する
+
+### 14.4 設定
+
+| 環境変数 | 既定 | 意味 |
+|---|---|---|
+| `EXCHANGE_RATE_PAIRS` | `USDJPY,EURJPY` | カンマ区切りの通貨ペア。`off` で機能無効 |
+| `EXCHANGE_RATE_TTL_MINUTES` | `20` | キャッシュ TTL（1〜1440） |
+
+### 14.5 制約・受容リスク
+
+- Yahoo Finance chart API は非公式・無保証。仕様変更で取得不能になっても閲覧機能に影響しない（ウィジェットが消えるだけ）よう分離する
+- 個人利用・20分に1回程度のアクセスであり利用規約上の負荷問題は実質無い。再配布はしない（自分専用 UI 表示のみ）
+- TTL 失効直後の同時アクセスではペア数×同時リクエスト数の並行取得が起き得るが、GET / は認証必須かつ個人利用のため in-flight 重複排除は実装しない（受容リスク）
+- 開発コンテナの squid 許可リストに Yahoo は無いため、開発環境ではライブ疎通不可（フィクスチャでテストし、実疎通は本番で確認）

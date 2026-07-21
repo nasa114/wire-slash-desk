@@ -4,6 +4,7 @@ import { MemoryFeedRepository } from './feed-repository.ts';
 import { MemoryArticleRepository } from './article-repository.ts';
 import { MemoryUserRepository } from './user-repository.ts';
 import { MemorySessionRepository } from './session-repository.ts';
+import { MemoryExchangeRateRepository } from './exchange-rate-repository.ts';
 import {
   MemoryOAuthClientRepository,
   MemoryOAuthCodeRepository,
@@ -21,6 +22,7 @@ export function createMemoryRepositories(): Repositories {
     oauthClients: new MemoryOAuthClientRepository(store),
     oauthCodes: new MemoryOAuthCodeRepository(store),
     oauthTokens: new MemoryOAuthTokenRepository(store),
+    exchangeRates: new MemoryExchangeRateRepository(store),
     close: async () => {},
   };
 }

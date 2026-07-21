@@ -152,3 +152,15 @@ export interface NewOAuthToken {
   refreshTokenHash: string;
   refreshExpiresAt: Date;
 }
+
+/**
+ * 為替レートのキャッシュスナップショット(設計書 §14、T4-3)。
+ * pair は 'USDJPY' 形式([A-Z]{6})。fetchedAt が TTL 判定の基準。
+ */
+export interface ExchangeRate {
+  pair: string;
+  rate: number;
+  prevClose: number | null;
+  marketTime: Date | null;
+  fetchedAt: Date;
+}

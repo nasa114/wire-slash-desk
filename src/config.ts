@@ -33,6 +33,13 @@ export interface AppConfig {
    */
   setupToken: string | undefined;
   nodeEnv: string;
+  /**
+   * ダッシュボードに表示する為替ペア(設計書 §14)。'USDJPY' 形式。
+   * EXCHANGE_RATE_PAIRS 未設定なら既定 USDJPY,EURJPY。'off' で無効(空配列)。
+   */
+  exchangeRatePairs: string[];
+  /** 為替キャッシュの TTL 分(設計書 §14.1、既定 20)。 */
+  exchangeRateTtlMinutes: number;
 }
 
 function readString(env: NodeJS.ProcessEnv, key: string): string | undefined {
@@ -131,6 +138,40 @@ export function validateDirectEgressInProduction(
   );
 }
 
+const EXCHANGE_RATE_PAIR_PATTERN = /^[A-Z]{6}$/;
+const DEFAULT_EXCHANGE_RATE_PAIRS = ['USDJPY', 'EURJPY'];
+
+/**
+ * EXCHANGE_RATE_PAIRS(カンマ区切り)を検証つきでパースする(設計書 §14.4)。
+ * 'off'(大小不問)は機能無効=空配列。要素は trim + 大文字化して [A-Z]{6} を要求し、
+ * 不正なら ConfigError で起動を拒否する(黙って表示が消えるより fail fast)。
+ */
+function parseExchangeRatePairs(raw: string | undefined): string[] {
+  if (raw === undefined) return [...DEFAULT_EXCHANGE_RATE_PAIRS];
+  if (raw.toLowerCase() === 'off') return [];
+  const pairs = raw
+    .split(',')
+    .map((p) => p.trim().toUpperCase())
+    .filter((p) => p.length > 0);
+  for (const pair of pairs) {
+    if (!EXCHANGE_RATE_PAIR_PATTERN.test(pair)) {
+      throw new ConfigError(
+        `EXCHANGE_RATE_PAIRS contains an invalid pair (expected 6 letters like USDJPY, or 'off')`,
+      );
+    }
+  }
+  return pairs;
+}
+
+function parseExchangeRateTtlMinutes(raw: string | undefined): number {
+  if (raw === undefined) return 20;
+  const ttl = Number.parseInt(raw, 10);
+  if (!Number.isFinite(ttl) || String(ttl) !== raw.trim() || ttl < 1 || ttl > 1440) {
+    throw new ConfigError('EXCHANGE_RATE_TTL_MINUTES must be an integer between 1 and 1440');
+  }
+  return ttl;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const portRaw = readString(env, 'PORT');
   const port = portRaw !== undefined ? Number.parseInt(portRaw, 10) : 3000;
@@ -160,6 +201,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     oauthIssuerUrl,
     setupToken: readString(env, 'SETUP_TOKEN'),
     nodeEnv,
+    exchangeRatePairs: parseExchangeRatePairs(readString(env, 'EXCHANGE_RATE_PAIRS')),
+    exchangeRateTtlMinutes: parseExchangeRateTtlMinutes(
+      readString(env, 'EXCHANGE_RATE_TTL_MINUTES'),
+    ),
   };
 }
 

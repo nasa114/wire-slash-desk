@@ -4,6 +4,7 @@ import { PgFeedRepository } from './feed-repository.ts';
 import { PgArticleRepository } from './article-repository.ts';
 import { PgUserRepository } from './user-repository.ts';
 import { PgSessionRepository } from './session-repository.ts';
+import { PgExchangeRateRepository } from './exchange-rate-repository.ts';
 import {
   PgOAuthClientRepository,
   PgOAuthCodeRepository,
@@ -21,6 +22,7 @@ export function createPgRepositories(connectionString: string): Repositories {
     oauthClients: new PgOAuthClientRepository(pool),
     oauthCodes: new PgOAuthCodeRepository(pool),
     oauthTokens: new PgOAuthTokenRepository(pool),
+    exchangeRates: new PgExchangeRateRepository(pool),
     close: async () => {
       await pool.end();
     },

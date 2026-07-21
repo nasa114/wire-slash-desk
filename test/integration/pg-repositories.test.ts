@@ -9,6 +9,7 @@ import { runArticleRepositoryContract } from '../contract/article-repository.con
 import { runUserRepositoryContract } from '../contract/user-repository.contract.ts';
 import { runSessionRepositoryContract } from '../contract/session-repository.contract.ts';
 import { runOAuthRepositoriesContract } from '../contract/oauth-repositories.contract.ts';
+import { runExchangeRateRepositoryContract } from '../contract/exchange-rate-repository.contract.ts';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -94,7 +95,7 @@ if (!databaseUrl) {
   const makeRepos = async (): Promise<Repositories> => {
     // 各テストを隔離するため、Repositories を組み立てる前に毎回テーブルを空にする。
     await truncatePool.query(
-      'truncate table articles, feeds, sessions, users, oauth_tokens, oauth_codes, oauth_clients restart identity cascade',
+      'truncate table articles, feeds, sessions, users, oauth_tokens, oauth_codes, oauth_clients, exchange_rates restart identity cascade',
     );
     return createPgRepositories(testDatabaseUrl);
   };
@@ -108,4 +109,5 @@ if (!databaseUrl) {
   runUserRepositoryContract('pg', makeRepos);
   runSessionRepositoryContract('pg', makeRepos);
   runOAuthRepositoriesContract('pg', makeRepos);
+  runExchangeRateRepositoryContract('pg', makeRepos);
 }

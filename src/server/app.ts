@@ -13,6 +13,7 @@ import type { LookupFn } from './ssrf.ts';
 import { verifyBearer, verifyCollectorToken } from './auth.ts';
 import { OAUTH_SCOPES, RssOAuthProvider } from './oauth-provider.ts';
 import { createWebApp } from './web.ts';
+import type { RateView } from '../rates/service.ts';
 import { UNKNOWN_BUILD_INFO, type BuildInfo } from './build-info.ts';
 
 export interface AppDeps {
@@ -42,6 +43,8 @@ export interface AppDeps {
    * GET /internal/version(X-Collector-Token 必須)に表示する。未指定なら unknown。
    */
   buildInfo?: BuildInfo;
+  /** 為替レート取得(設計書 §14、T4-3)。未指定ならダッシュボードに為替を表示しない。 */
+  getRates?: () => Promise<RateView[]>;
 }
 
 const MAX_COLLECT_BODY_BYTES = 64 * 1024;
@@ -190,6 +193,7 @@ export function createApp(deps: AppDeps): Server {
     ...(deps.setupToken !== undefined ? { setupToken: deps.setupToken } : {}),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
     ...(oauthProvider !== undefined ? { oauthProvider } : {}),
+    ...(deps.getRates !== undefined ? { getRates: deps.getRates } : {}),
   });
   const webListener = getRequestListener(webApp.fetch);
 

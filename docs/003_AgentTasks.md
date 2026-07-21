@@ -150,6 +150,8 @@ GPT-5系は指示の曖昧さに弱いため、タスクを渡すときは必ず
 
 - T4-1 管理UI最小版（U3確定後）: feeds CRUD、フラグ・tos_note編集
 - T4-2 OAuth 2.1（U5確定後）: MCP authorization仕様準拠 → **実装済み(2026-07-18)**: アプリ内蔵認可サーバー（設計書 §7 Phase B / §13 U5 参照）
+- T4-3 為替レートウィジェット（設計書 §14）: `exchange_rates` テーブル + `ExchangeRateRepository`（memory/pg + 契約テスト）、Yahoo Finance chart API クライアント（fetchFn 注入・SSRF ガード再利用）、lazy TTL 20分キャッシュ、ダッシュボード stats への表示
+  - 受け入れ条件: ①TTL 内はフェッチせずキャッシュを返す ②TTL 超過時のみ1回取得して upsert ③取得失敗時は stale 表示（キャッシュ無しならウィジェット非表示）で他機能に影響しない ④pair は `[A-Z]{6}` 検証 ⑤`EXCHANGE_RATE_PAIRS=off` で完全無効 ⑥契約テスト・web テスト・lint 全緑
 - T5-1 pgvector（U2確定後）: embeddings生成バッチ + search_articlesのベクトル対応
 - T5-2 2トラックスコアリング（設計書 §12。詳細設計を先に行う）
 

@@ -1,5 +1,6 @@
 import type {
   Article,
+  ExchangeRate,
   Feed,
   FeedPatch,
   NewArticle,
@@ -147,9 +148,20 @@ export interface OAuthTokenRepository {
   deleteExpired(now: Date): Promise<number>;
 }
 
+/**
+ * 為替レートキャッシュ(設計書 §14、T4-3)。pair 主キーで最新1行のみ保持する。
+ * TTL 判定はサービス層(src/rates/service.ts)の責務で、リポジトリは保存と取得のみ。
+ */
+export interface ExchangeRateRepository {
+  get(pair: string): Promise<ExchangeRate | null>;
+  /** pair が存在すれば全列更新、無ければ挿入する。 */
+  upsert(input: ExchangeRate): Promise<void>;
+}
+
 export interface Repositories {
   feeds: FeedRepository;
   articles: ArticleRepository;
+  exchangeRates: ExchangeRateRepository;
   users: UserRepository;
   sessions: SessionRepository;
   oauthClients: OAuthClientRepository;

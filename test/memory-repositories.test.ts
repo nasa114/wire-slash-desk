@@ -3,6 +3,7 @@ import { runArticleRepositoryContract } from './contract/article-repository.cont
 import { runUserRepositoryContract } from './contract/user-repository.contract.ts';
 import { runSessionRepositoryContract } from './contract/session-repository.contract.ts';
 import { runOAuthRepositoriesContract } from './contract/oauth-repositories.contract.ts';
+import { runExchangeRateRepositoryContract } from './contract/exchange-rate-repository.contract.ts';
 import { createMemoryRepositories } from '../src/repo/memory/index.ts';
 
 const makeRepos = async () => createMemoryRepositories();
@@ -12,3 +13,4 @@ runArticleRepositoryContract('memory', makeRepos);
 runUserRepositoryContract('memory', makeRepos);
 runSessionRepositoryContract('memory', makeRepos);
 runOAuthRepositoriesContract('memory', makeRepos);
+runExchangeRateRepositoryContract('memory', makeRepos);

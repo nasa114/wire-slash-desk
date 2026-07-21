@@ -1,4 +1,5 @@
 import type { Article, Feed } from '../domain/types.ts';
+import type { RateView } from '../rates/service.ts';
 import type { BuildInfo } from './build-info.ts';
 import { assetPath } from './assets.ts';
 
@@ -212,13 +213,43 @@ function rowItem(article: Article, feedsById: Map<string, Feed>): string {
 </li>`;
 }
 
+/** 'USDJPY' → 'USD/JPY'。pair は設定時に [A-Z]{6} 検証済みだが表示は常にエスケープする。 */
+function fmtPair(pair: string): string {
+  return `${pair.slice(0, 3)}/${pair.slice(3)}`;
+}
+
+/** 為替レートの表示桁。円クロス等の大きい値は2桁、ドルストレート等は4桁。 */
+function fmtRate(rate: number): string {
+  return rate >= 20 ? rate.toFixed(2) : rate.toFixed(4);
+}
+
+/** 為替レートの stat カード(設計書 §14)。stale = TTL 切れの古い値を表示中。 */
+function fxStat(view: RateView): string {
+  let move = '';
+  if (view.prevClose !== null && view.prevClose > 0) {
+    const pct = ((view.rate - view.prevClose) / view.prevClose) * 100;
+    const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : '';
+    const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '±';
+    move = `<span class="move${cls === '' ? '' : ` ${cls}`}">${arrow}${Math.abs(pct).toFixed(2)}%</span> · `;
+  }
+  const asOf = view.marketTime ?? view.fetchedAt;
+  const staleNote = view.stale ? ' · <span class="stale-note">更新停止中</span>' : '';
+  return `<div class="stat fx${view.stale ? ' stale' : ''}">
+    <div class="num">${escapeHtml(fmtRate(view.rate))}</div>
+    <div class="label">${escapeHtml(fmtPair(view.pair))}</div>
+    <div class="sub">${move}${hhmmJst(asOf)} JST${staleNote}</div>
+  </div>`;
+}
+
 function statsStrip(input: {
   last24Count: number;
   feeds: Feed[];
   lastFetched: Date | null;
+  rates: RateView[];
 }): string {
   const enabled = input.feeds.filter((f) => f.enabled).length;
   const fulltext = input.feeds.filter((f) => f.fulltextAllowed).length;
+  const fx = input.rates.map((r) => `\n  ${fxStat(r)}`).join('');
   return `<section class="stats" aria-label="概況">
   <div class="stat">
     <div class="num">${input.last24Count}<span class="unit">件</span></div>
@@ -239,7 +270,7 @@ function statsStrip(input: {
     <div class="num">${input.lastFetched === null ? '—' : hhmmJst(input.lastFetched)}</div>
     <div class="label">最終取得</div>
     <div class="sub">${input.lastFetched === null ? 'まだ収集していません' : `${jstDayStamp(input.lastFetched)} JST`}</div>
-  </div>
+  </div>${fx}
 </section>`;
 }
 
@@ -283,7 +314,11 @@ const DIGEST_SLOT = `<section class="panel slot">
 
 const WIRE_MAX = 12;
 
-export function dashboardBody(input: { last24: Article[]; feeds: Feed[] }): string {
+export function dashboardBody(input: {
+  last24: Article[];
+  feeds: Feed[];
+  rates?: RateView[];
+}): string {
   const feedsById = new Map(input.feeds.map((f) => [f.id, f]));
   const lastFetched = input.feeds.reduce<Date | null>(
     (acc, f) =>
@@ -295,7 +330,7 @@ export function dashboardBody(input: { last24: Article[]; feeds: Feed[] }): stri
     wireItems.length === 0
       ? '<p class="empty">直近24時間の記事はまだありません。</p>'
       : `<ol class="wire">\n${wireItems.map((a) => wireItem(a, feedsById)).join('\n')}\n</ol>`;
-  return `${statsStrip({ last24Count: input.last24.length, feeds: input.feeds, lastFetched })}
+  return `${statsStrip({ last24Count: input.last24.length, feeds: input.feeds, lastFetched, rates: input.rates ?? [] })}
 <main class="grid">
   <div class="col-main">
     ${TREND_PANEL}

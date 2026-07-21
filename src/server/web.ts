@@ -16,6 +16,7 @@ import { LoginThrottle } from './login-throttle.ts';
 import { generateSessionToken, hashSessionToken, SESSION_COOKIE_NAME, SESSION_TTL_MS } from './session.ts';
 import { OAUTH_SCOPES, type RssOAuthProvider } from './oauth-provider.ts';
 import type { BuildInfo } from './build-info.ts';
+import type { RateView } from '../rates/service.ts';
 import { minifyHtml } from './minify.ts';
 import { assetVersion, getAsset, type AssetName } from './assets.ts';
 import {
@@ -58,6 +59,11 @@ export interface WebDeps {
   setupToken?: string;
   /** バージョン・ビルド情報。指定時は認証済みページのフッターに表示する。 */
   buildInfo?: BuildInfo;
+  /**
+   * 為替レートの取得(設計書 §14、T4-3)。lazy TTL キャッシュはサービス側の責務。
+   * 未指定または空配列ならダッシュボードに為替は表示しない。
+   */
+  getRates?: () => Promise<RateView[]>;
 }
 
 type WebEnv = { Variables: { user: User } };
@@ -603,9 +609,11 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
     }
     const current = now();
     const since = new Date(current.getTime() - 24 * 60 * 60_000);
-    const [feeds, last24] = await Promise.all([
+    const [feeds, last24, rates] = await Promise.all([
       deps.repos.feeds.list(),
       deps.repos.articles.listRecent({ since, limit: 200 }),
+      // 為替はあくまで付加情報。取得系の失敗でダッシュボードを落とさない。
+      deps.getRates !== undefined ? deps.getRates().catch(() => []) : Promise.resolve([]),
     ]);
     const ctx = pageCtx(c, 'dashboard', { q: '', date: '' });
     return html(
@@ -613,7 +621,7 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       layout(
         'Wire Desk — パーソナルRSSリーダー',
         ctx,
-        dashboardBody({ last24: visibleArticles(last24, feeds), feeds }),
+        dashboardBody({ last24: visibleArticles(last24, feeds), feeds, rates }),
       ),
     );
   });

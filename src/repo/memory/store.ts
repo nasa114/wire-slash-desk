@@ -1,5 +1,6 @@
 import type {
   Article,
+  ExchangeRate,
   Feed,
   OAuthClient,
   OAuthCode,
@@ -20,6 +21,8 @@ export interface MemoryStore {
   oauthCodes: Map<string, OAuthCode>;
   /** key = id */
   oauthTokens: Map<string, OAuthToken>;
+  /** key = pair */
+  exchangeRates: Map<string, ExchangeRate>;
 }
 
 export function createMemoryStore(): MemoryStore {
@@ -31,6 +34,7 @@ export function createMemoryStore(): MemoryStore {
     oauthClients: new Map(),
     oauthCodes: new Map(),
     oauthTokens: new Map(),
+    exchangeRates: new Map(),
   };
 }
 
@@ -86,6 +90,14 @@ export function cloneOAuthCode(code: OAuthCode): OAuthCode {
     scopes: [...code.scopes],
     expiresAt: new Date(code.expiresAt),
     createdAt: new Date(code.createdAt),
+  };
+}
+
+export function cloneExchangeRate(rate: ExchangeRate): ExchangeRate {
+  return {
+    ...rate,
+    marketTime: rate.marketTime ? new Date(rate.marketTime) : null,
+    fetchedAt: new Date(rate.fetchedAt),
   };
 }
 

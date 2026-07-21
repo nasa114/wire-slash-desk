@@ -1,5 +1,6 @@
 import type {
   Article,
+  ExchangeRate,
   Feed,
   OAuthClient,
   OAuthCode,
@@ -176,5 +177,24 @@ export function mapOAuthTokenRow(row: OAuthTokenRow): OAuthToken {
     refreshTokenHash: row.refresh_token_hash,
     refreshExpiresAt: row.refresh_expires_at,
     createdAt: row.created_at,
+  };
+}
+
+/** exchange_rates テーブルの行。double precision は pg ドライバが number へ変換済み。 */
+export interface ExchangeRateRow {
+  pair: string;
+  rate: number;
+  prev_close: number | null;
+  market_time: Date | null;
+  fetched_at: Date;
+}
+
+export function mapExchangeRateRow(row: ExchangeRateRow): ExchangeRate {
+  return {
+    pair: row.pair,
+    rate: row.rate,
+    prevClose: row.prev_close,
+    marketTime: row.market_time,
+    fetchedAt: row.fetched_at,
   };
 }
