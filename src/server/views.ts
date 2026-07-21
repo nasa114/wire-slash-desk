@@ -245,56 +245,42 @@ function marketQuote(view: RateView): string {
   </li>`;
 }
 
-/** 市況欄。レートが1件も無ければ描画しない(帯ごと非表示)。 */
-function marketStrip(rates: RateView[]): string {
+/** 市況ティッカー。レートが1件も無ければ描画しない。 */
+function marketQuotes(rates: RateView[]): string {
   if (rates.length === 0) return '';
   return `
-  <div class="market-strip" aria-label="為替">
-    <header class="market-heading">
-      <h2 class="market-title">為替</h2>
-      <p class="market-caption">Foreign Exchange</p>
-    </header>
-    <ul class="market-quotes">
+    <ul class="market-quotes" aria-label="為替">
 ${rates.map((r) => `      ${marketQuote(r)}`).join('\n')}
-    </ul>
-  </div>`;
+    </ul>`;
 }
 
-function statsStrip(input: {
-  last24Count: number;
-  feeds: Feed[];
-  lastFetched: Date | null;
-  rates: RateView[];
-}): string {
-  const enabled = input.feeds.filter((f) => f.enabled).length;
-  const fulltext = input.feeds.filter((f) => f.fulltextAllowed).length;
+/**
+ * 概況データ行。かつての統計カード4枚(直近24時間/有効フィード/本文取得可/最終取得)
+ * のうち、管理情報(有効フィード・本文取得可)は /feeds とレールに任せて削除し、
+ * コンテンツ KPI の記事数と市況ティッカーを1本の欄外データ行に統合した
+ * (ユーザー指示 2026-07-22)。最終取得はフィードの状態パネルの注記へ移設。
+ */
+function statsStrip(input: { last24Count: number; rates: RateView[] }): string {
   return `<section class="stats" aria-label="概況">
-  <div class="stats-primary">
-  <div class="stat">
-    <div class="num">${input.last24Count}<span class="unit">件</span></div>
-    <div class="label">直近24時間</div>
-    <div class="sub">published / 24h</div>
+  <div class="data-line">
+    <div class="data-item">
+      <span class="data-label">直近24時間</span>
+      <span class="data-value">${input.last24Count}<span class="unit">件</span></span>
+    </div>${marketQuotes(input.rates)}
   </div>
-  <div class="stat">
-    <div class="num">${enabled}<span class="unit">/ ${input.feeds.length}</span></div>
-    <div class="label">有効フィード</div>
-    <div class="sub">enabled / total</div>
-  </div>
-  <div class="stat">
-    <div class="num">${fulltext}<span class="unit">件</span></div>
-    <div class="label">本文取得可</div>
-    <div class="sub">fulltext_allowed</div>
-  </div>
-  <div class="stat">
-    <div class="num">${input.lastFetched === null ? '—' : hhmmJst(input.lastFetched)}</div>
-    <div class="label">最終取得</div>
-    <div class="sub">${input.lastFetched === null ? 'まだ収集していません' : `${jstDayStamp(input.lastFetched)} JST`}</div>
-  </div>
-  </div>${marketStrip(input.rates)}
 </section>`;
 }
 
-function feedRail(feeds: Feed[]): string {
+/** 全フィード中で最も新しい取得時刻(未収集なら null)。 */
+function latestFetch(feeds: Feed[]): Date | null {
+  return feeds.reduce<Date | null>(
+    (acc, f) =>
+      f.lastFetchedAt !== null && (acc === null || f.lastFetchedAt > acc) ? f.lastFetchedAt : acc,
+    null,
+  );
+}
+
+function feedRail(feeds: Feed[], lastFetched: Date | null): string {
   const items = feeds
     .map(
       (f) => `<li>
@@ -304,9 +290,12 @@ function feedRail(feeds: Feed[]): string {
 </li>`,
     )
     .join('\n');
+  // 全体の最終取得はデータ行から移設(個別時刻の要約としてここが収まりが良い)。
+  const lastNote =
+    lastFetched === null ? '' : ` — 全体の最終取得 ${jstDayStamp(lastFetched)} ${hhmmJst(lastFetched)}`;
   return `<section class="panel">
 <h2>フィードの状態</h2>
-<p class="panel-note">情報源と最終取得時刻(JST)</p>
+<p class="panel-note">情報源と最終取得時刻(JST)${lastNote}</p>
 <ul class="feedlist">
 ${items || '<li>フィードが未登録です</li>'}
 </ul>
@@ -340,17 +329,12 @@ export function dashboardBody(input: {
   rates?: RateView[];
 }): string {
   const feedsById = new Map(input.feeds.map((f) => [f.id, f]));
-  const lastFetched = input.feeds.reduce<Date | null>(
-    (acc, f) =>
-      f.lastFetchedAt !== null && (acc === null || f.lastFetchedAt > acc) ? f.lastFetchedAt : acc,
-    null,
-  );
   const wireItems = input.last24.slice(0, WIRE_MAX);
   const wire =
     wireItems.length === 0
       ? '<p class="empty">直近24時間の記事はまだありません。</p>'
       : `<ol class="wire">\n${wireItems.map((a) => wireItem(a, feedsById)).join('\n')}\n</ol>`;
-  return `${statsStrip({ last24Count: input.last24.length, feeds: input.feeds, lastFetched, rates: input.rates ?? [] })}
+  return `${statsStrip({ last24Count: input.last24.length, rates: input.rates ?? [] })}
 <main class="grid">
   <div class="col-main">
     ${TREND_PANEL}
@@ -362,7 +346,7 @@ export function dashboardBody(input: {
     </section>
   </div>
   <aside class="rail">
-    ${feedRail(input.feeds)}
+    ${feedRail(input.feeds, latestFetch(input.feeds))}
     ${DIGEST_SLOT}
   </aside>
 </main>`;
@@ -418,7 +402,7 @@ export function articlesBody(input: {
     </section>
   </div>
   <aside class="rail">
-    ${feedRail(input.feeds)}
+    ${feedRail(input.feeds, latestFetch(input.feeds))}
   </aside>
 </main>`;
 }
