@@ -236,12 +236,16 @@ function marketQuote(view: RateView): string {
     const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '±';
     move = `<span class="move${cls === '' ? '' : ` ${cls}`}">${arrow}${Math.abs(pct).toFixed(2)}%</span>`;
   }
-  const asOf = view.marketTime ?? view.fetchedAt;
-  const staleNote = view.stale ? '<span class="stale-note">更新停止中</span>' : '';
+  // 更新時刻はデータ行右端の「為替更新」に集約する。stale のペアだけは
+  // 全体の更新時刻と食い違うため、個別に古い取得時刻を明示する。
+  const staleNote = view.stale
+    ? `<span class="stale-note">更新停止中(${jstDayStamp(view.fetchedAt)} ${hhmmJst(view.fetchedAt)} JST)</span>`
+    : '';
+  const meta = move === '' && staleNote === '' ? '' : `
+    <span class="market-meta">${move}${staleNote}</span>`;
   return `<li class="market-quote${view.stale ? ' stale' : ''}">
     <span class="market-pair">${escapeHtml(fmtPair(view.pair))}</span>
-    <span class="market-value">${escapeHtml(fmtRate(view.rate))}</span>
-    <span class="market-meta">${move}<time>${hhmmJst(asOf)} JST</time>${staleNote}</span>
+    <span class="market-value">${escapeHtml(fmtRate(view.rate))}</span>${meta}
   </li>`;
 }
 
@@ -259,14 +263,27 @@ ${rates.map((r) => `      ${marketQuote(r)}`).join('\n')}
  * のうち、管理情報(有効フィード・本文取得可)は /feeds とレールに任せて削除し、
  * コンテンツ KPI の記事数と市況ティッカーを1本の欄外データ行に統合した
  * (ユーザー指示 2026-07-22)。最終取得はフィードの状態パネルの注記へ移設。
+ * 為替キャッシュの最終更新時刻は行の右端に1つだけ表示する(fetchedAt 基準)。
  */
-function statsStrip(input: { last24Count: number; rates: RateView[] }): string {
+function statsStrip(input: { last24Count: number; rates: RateView[]; now: Date }): string {
+  const latest = input.rates.reduce<Date | null>(
+    (acc, r) => (acc === null || r.fetchedAt > acc ? r.fetchedAt : acc),
+    null,
+  );
+  // 当日(JST)なら時刻のみ、日をまたいで古ければ日付も付けて誤読を防ぐ。
+  const asOf =
+    latest === null
+      ? ''
+      : `
+    <span class="data-asof">為替更新 ${
+      jstDayStamp(latest) === jstDayStamp(input.now) ? '' : `${jstDayStamp(latest)} `
+    }${hhmmJst(latest)} JST</span>`;
   return `<section class="stats" aria-label="概況">
   <div class="data-line">
     <div class="data-item">
       <span class="data-label">直近24時間</span>
       <span class="data-value">${input.last24Count}<span class="unit">件</span></span>
-    </div>${marketQuotes(input.rates)}
+    </div>${marketQuotes(input.rates)}${asOf}
   </div>
 </section>`;
 }
@@ -327,6 +344,7 @@ export function dashboardBody(input: {
   last24: Article[];
   feeds: Feed[];
   rates?: RateView[];
+  now: Date;
 }): string {
   const feedsById = new Map(input.feeds.map((f) => [f.id, f]));
   const wireItems = input.last24.slice(0, WIRE_MAX);
@@ -334,7 +352,7 @@ export function dashboardBody(input: {
     wireItems.length === 0
       ? '<p class="empty">直近24時間の記事はまだありません。</p>'
       : `<ol class="wire">\n${wireItems.map((a) => wireItem(a, feedsById)).join('\n')}\n</ol>`;
-  return `${statsStrip({ last24Count: input.last24.length, rates: input.rates ?? [] })}
+  return `${statsStrip({ last24Count: input.last24.length, rates: input.rates ?? [], now: input.now })}
 <main class="grid">
   <div class="col-main">
     ${TREND_PANEL}

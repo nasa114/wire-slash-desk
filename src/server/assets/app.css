@@ -99,6 +99,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .data-label { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.09em; color: var(--ink-2); }
 .data-value { font-family: var(--serif); font-size: 1.35rem; line-height: 1; font-variant-numeric: tabular-nums; }
 .data-value .unit { font-size: 0.8rem; color: var(--ink-2); margin-left: 2px; }
+.data-asof { margin-left: auto; padding-left: 20px; font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.05em; color: var(--ink-3); white-space: nowrap; }
 .market-quotes { display: flex; flex-wrap: wrap; align-items: baseline; min-width: 0; margin: 0; padding: 0; list-style: none; }
 .market-quote { display: flex; flex: 0 0 auto; align-items: baseline; gap: 8px; padding: 2px 20px; border-left: 1px solid var(--line); white-space: nowrap; }
 .market-pair { font-family: var(--mono); font-size: 0.66rem; line-height: 1; letter-spacing: 0.09em; color: var(--ink-2); }

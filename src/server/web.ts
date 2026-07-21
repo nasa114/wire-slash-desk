@@ -621,7 +621,7 @@ export function createWebApp(deps: WebDeps): Hono<WebEnv> {
       layout(
         'Wire Desk — パーソナルRSSリーダー',
         ctx,
-        dashboardBody({ last24: visibleArticles(last24, feeds), feeds, rates }),
+        dashboardBody({ last24: visibleArticles(last24, feeds), feeds, rates, now: current }),
       ),
     );
   });
